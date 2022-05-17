@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "EarnForex.com"
 #property link      "https://www.earnforex.com/metatrader-indicators/MarketProfile/"
-#property version   "1.18"
+#property version   "1.19"
 #property strict
 
 #property description "Displays the Market Profile indicator for intraday, daily, weekly, or monthly trading sessions."
@@ -20,18 +20,31 @@
 //+------------------------------------------------------------------+
 #property indicator_chart_window
 // Two buffers are used for the Developing POC display because a single buffer wouldn't support an interrupting line.
-#property indicator_plots 2
-#property indicator_buffers 2
+// Three more buffers are for arrow alerts.
+#property indicator_plots 5
+#property indicator_buffers 5
 #property indicator_color1  clrGreen
 #property indicator_color2  clrGreen
+#property indicator_color3  clrRed
+#property indicator_color4  clrBlue
+#property indicator_color5  clrYellow
 #property indicator_width1  5
 #property indicator_width2  5
+#property indicator_width3  5
+#property indicator_width4  5
+#property indicator_width5  5
 #property indicator_type1   DRAW_LINE
 #property indicator_type2   DRAW_LINE
+#property indicator_type3   DRAW_ARROW
+#property indicator_type4   DRAW_ARROW
+#property indicator_type5   DRAW_ARROW
 #property indicator_style1  STYLE_SOLID
 #property indicator_style2  STYLE_SOLID
 #property indicator_label1  "Developing POC"
 #property indicator_label2  "Developing POC"
+#property indicator_label3  "Price break"
+#property indicator_label4  "Candle close crossover"
+#property indicator_label5  "Gap crossover"
 
 enum color_scheme
 {
@@ -72,10 +85,10 @@ enum sessions_to_draw_rays
 
 enum ways_to_stop_rays
 {
-    Stop_No_Rays,
-    Stop_All_Rays,
-    Stop_All_Rays_Except_Prev_Session,
-    Stop_Only_Previous_Session,
+    Stop_No_Rays,                      // Stop no rays
+    Stop_All_Rays,                     // Stop all rays
+    Stop_All_Rays_Except_Prev_Session, // Stop all rays except previous session
+    Stop_Only_Previous_Session,        // Stop only previous session's rays
 };
 
 // Only for dot coloring choice in PutDot() when ColorBullBear == true.
@@ -101,20 +114,21 @@ enum alert_check_bar
 
 enum alert_types // Required to type a parameter of DoAlerts().
 {
-    PriceBreak, // Price Break
+    PriceBreak,           // Price Break
     CandleCloseCrossover, // Candle Close Crossover
-    GapCrossover // Gap Crossover
+    GapCrossover          // Gap Crossover
 };
 
-//input group "Main"
+input group "Main"
 input session_period Session                 = Daily;
 input datetime       StartFromDate           = __DATE__;        // StartFromDate: lower priority.
 input bool           StartFromCurrentSession = true;            // StartFromCurrentSession: higher priority.
 input int            SessionsToCount         = 2;               // SessionsToCount: Number of sessions to count Market Profile.
+input bool           SeamlessScrollingMode   = false;           // SeamlessScrollingMode: show sessions on current screen.
 input bool           EnableDevelopingPOC     = false;           // Enable Developing POC.
 input int            ValueAreaPercentage     = 70;              // ValueAreaPercentage: Percentage of TPO's inside Value Area.
 
-//input group "Colors and looks"
+input group "Colors and looks"
 input color_scheme   ColorScheme              = Blue_to_Red;
 input color          SingleColor              = clrBlue;        // SingleColor: if ColorScheme is set to Single_Color.
 input bool           ColorBullBear            = false;          // ColorBullBear: If true, colors are from bars' direction.
@@ -142,31 +156,35 @@ input int            KeyValuesSize            = 8;              // KeyValuesSize
 input single_print_type ShowSinglePrint       = No;             // ShowSinglePrint: mark Single Print profile levels.
 input color          SinglePrintColor         = clrGold;
 input bool           SinglePrintRays          = false;          // SinglePrintRays: mark Single Print edges with rays.
-input color          SinglePrintRayStyle      = STYLE_SOLID;
-input color          SinglePrintRayWidth      = 1;
+input ENUM_LINE_STYLE SinglePrintRayStyle     = STYLE_SOLID;
+input int            SinglePrintRayWidth      = 1;
 input color          ProminentMedianColor     = clrYellow;
 input ENUM_LINE_STYLE ProminentMedianStyle    = STYLE_SOLID;
 input int            ProminentMedianWidth     = 4;
 input bool           RightToLeft              = false;          // RightToLeft: Draw histogram from right to left.
 
-//input group "Performance"
+input group "Performance"
 input int            PointMultiplier          = 0;      // PointMultiplier: higher value = fewer objects. 0 - adaptive.
 input int            ThrottleRedraw           = 0;      // ThrottleRedraw: delay (in seconds) for updating Market Profile.
 input bool           DisableHistogram         = false;  // DisableHistogram: do not draw profile, VAH, VAL, and POC still visible.
 
-//input group "Alerts"
+input group "Alerts"
 input bool           AlertNative              = false;           // AlertNative: issue native pop-up alerts.
 input bool           AlertEmail               = false;           // AlertEmail: issue email alerts.
 input bool           AlertPush                = false;           // AlertPush: issue push-notification alerts.
+input bool           AlertArrows              = false;           // AlertArrows: draw chart arrows on alerts.
 input alert_check_bar AlertCheckBar           = CheckCurrentBar; // AlertCheckBar: which bar to check for alerts?
 input bool           AlertForValueArea        = false;           // AlertForValueArea: alerts for Value Area (VAH, VAL) rays.
 input bool           AlertForMedian           = false;           // AlertForMedian: alerts for POC (Median) rays' crossing.
 input bool           AlertForSinglePrint      = false;           // AlertForSinglePrint: alerts for single print rays' crossing.
 input bool           AlertOnPriceBreak        = false;           // AlertOnPriceBreak: price breaking above/below the ray.
-input bool           AlertOnBarClose          = false;           // AlertOnBarClose: bar closing above/below the ray.
+input bool           AlertOnCandleClose       = false;           // AlertOnCandleClose: candle closing above/below the ray.
 input bool           AlertOnGapCross          = false;           // AlertOnGapCross: bar gap above/below the ray.
+input int            AlertArrowCodePB         = 108;             // AlertArrowCodePB: arrow code for price break alerts.
+input int            AlertArrowCodeCC         = 110;             // AlertArrowCodeCC: arrow code for candle close alerts.
+input int            AlertArrowCodeGC         = 117;             // AlertArrowCodeGC: arrow code for gap crossover alerts.
 
-//input group "Intraday settings"
+input group "Intraday settings"
 input bool           EnableIntradaySession1      = true;
 input string         IntradaySession1StartTime   = "00:00";
 input string         IntradaySession1EndTime     = "06:00";
@@ -187,7 +205,7 @@ input string         IntradaySession4StartTime   = "18:00";
 input string         IntradaySession4EndTime     = "00:00";
 input color_scheme   IntradaySession4ColorScheme = Yellow_to_Cyan;
 
-//input group "Miscellaneous"
+input group "Miscellaneous"
 input sat_sun_solution SaturdaySunday                 = Saturday_Sunday_Normal_Days;
 input bool             DisableAlertsOnWrongTimeframes = false;  // Disable alerts on wrong timeframes.
 input int              ProminentMedianPercentage      = 101;    // Percentage of Median TPOs out of total for a Prominent one.
@@ -255,7 +273,8 @@ CRectangleMP* MPR_Array[];
 int mpr_total = 0;
 uint LastRecalculationTime = 0;
 
-double DevelopingPOC_1[], DevelopingPOC_2[]; // Indicator buffers.
+double DevelopingPOC_1[], DevelopingPOC_2[]; // Indicator buffers for Developing POC.
+double ArrowsPB[], ArrowsCC[], ArrowsGC[]; // Indicator buffers for alert arrows.
 
 //+------------------------------------------------------------------+
 //| Custom indicator initialization function                         |
@@ -327,7 +346,13 @@ int OnInit()
             InitFailed = true; // Soft INIT_FAILED.
         }
     }
-
+    else if ((Session == Rectangle) && (SeamlessScrollingMode)) // No point in seamless scrolling mode with rectangle sessions.
+    {
+        string alert_text = "Seamless scrolling mode doesn't work with Rectangle sessions.";
+        if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
+        else Print("Initialization failed: " + alert_text);
+        InitFailed = true; // Soft INIT_FAILED.
+    }
     // Indicator Name.
     IndicatorShortName("MarketProfile " + EnumToString(Session));
 
@@ -374,20 +399,26 @@ int OnInit()
     // To clean up potential leftovers when applying a chart template.
     ObjectCleanup();
 
-    // Check if user wants Session mode as Rectangle or if it is a right-to-left session, or if rays should be constantly monitored.
-    if ((Session == Rectangle) || (RightToLeft) || (HideRaysFromInvisibleSessions))
+    // Check if user wants Session mode as Rectangle or if it is a right-to-left session, or if rays should be constantly monitored, or seamless scrolling is on.
+    if ((Session == Rectangle) || (RightToLeft) || (HideRaysFromInvisibleSessions) || (SeamlessScrollingMode))
     {
         EventSetMillisecondTimer(500);
     }
     
-    // If user chose to display the Developing POC, apply some basic configuration to the buffer.
-    if (EnableDevelopingPOC)
-    {
-        SetIndexBuffer(0, DevelopingPOC_1);
-        PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-        SetIndexBuffer(1, DevelopingPOC_2);
-        PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-    }
+    // Better do this unconditionally to avoid buffer errors.
+    SetIndexBuffer(0, DevelopingPOC_1);
+    PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+    SetIndexBuffer(1, DevelopingPOC_2);
+    PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+    SetIndexBuffer(2, ArrowsPB);
+    PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+    PlotIndexSetInteger(2, PLOT_ARROW, AlertArrowCodePB);
+    SetIndexBuffer(3, ArrowsCC);
+    PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+    PlotIndexSetInteger(3, PLOT_ARROW, AlertArrowCodeCC);
+    SetIndexBuffer(4, ArrowsGC);
+    PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+    PlotIndexSetInteger(4, PLOT_ARROW, AlertArrowCodeGC);
 
     ValueAreaPercentage_double = ValueAreaPercentage * 0.01;
 
@@ -433,21 +464,30 @@ int OnCalculate(const int rates_total,
     }
 
     // New bars arrived?
-    if ((EnableDevelopingPOC) && (rates_total - prev_calculated > 1) && (CleanedUpOn != rates_total))
+    if (((EnableDevelopingPOC) || (AlertArrows)) && (rates_total - prev_calculated > 1) && (CleanedUpOn != rates_total))
     {
-        // Initialize the DPOC buffers.
+        // Initialize the indicator buffers.
         for (int i = prev_calculated; i < rates_total; i++)
         {
             DevelopingPOC_1[i] = EMPTY_VALUE;
             DevelopingPOC_2[i] = EMPTY_VALUE;
+            ArrowsPB[i] = EMPTY_VALUE;
+            ArrowsCC[i] = EMPTY_VALUE;
+            ArrowsGC[i] = EMPTY_VALUE;
         }
         CleanedUpOn = rates_total; // To prevent cleaning up the buffers again and again when the platform just starts.
     }
 
     CheckAlerts();
 
-    // Check if user requests current session, else a specific date.
-    if (StartFromCurrentSession) StartDate = Time[0];
+    // Check if seamless scrolling mode should be on, else if user requests current session, else a specific date.
+    if (SeamlessScrollingMode)
+    {
+        int last_visible_bar = WindowFirstVisibleBar() - WindowBarsPerChart() + 1;
+        if (last_visible_bar < 0) last_visible_bar = 0;
+        StartDate = Time[last_visible_bar];
+    }
+    else if (StartFromCurrentSession) StartDate = Time[0];
     else StartDate = StartFromDate;
 
     // Adjust date if Ignore_Saturday_Sunday is set.
@@ -609,7 +649,6 @@ int FindSessionStart(const int n)
                 }
             }
         }
-
         return FindDayStart(n);
     }
     return -1;
@@ -1183,7 +1222,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, C
     RememberSessionMin[session_counter] = SessionMin;
     RememberSessionStart[session_counter] = Time[sessionstart];
     RememberSessionSuffix[session_counter] = Suffix;
-
+    
     // Used to make sure that SessionMax increments only by 'onetick' increments.
     // This is needed only when updating the latest trading session and PointMultiplier_calculated > 1.
     static double PreviousSessionMax = DBL_MIN;
@@ -1322,6 +1361,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, C
         {
             int index = (int)MathRound((price - SessionMin) / onetick);
             if (range == 1) SinglePrintTracking_array[index] = true; // Remember the single print's position relative to the price.
+            else SinglePrintTracking_array[index] = false;
         }
     }
     
@@ -1349,6 +1389,10 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, C
                     {
                         PutSinglePrintRay(price, sessionstart, rectangle_prefix, spr_color);
                     }
+                    else
+                    {
+                        RemoveSinglePrintRay(price, sessionstart, rectangle_prefix);
+                    }
                 }
                 if (price == SessionMin) // Bottom of the session.
                 {
@@ -1360,12 +1404,16 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, C
                     {
                         PutSinglePrintRay(price - onetick, sessionstart, rectangle_prefix, spr_color);
                     }
+                    else
+                    {
+                        RemoveSinglePrintRay(price - onetick, sessionstart, rectangle_prefix);
+                    }
                 }
             }
             else
             {
                 // Attempt to remove a horizontal line above and below the "potentially no longer existing" single print mark.
-                RemoveSinglePrintRay(price, sessionstart, rectangle_prefix);
+                //RemoveSinglePrintRay(price, sessionstart, rectangle_prefix);
                 RemoveSinglePrintRay(price - onetick, sessionstart, rectangle_prefix);
             }
         }
@@ -1407,9 +1455,9 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, C
             break;
         }
     }
-    string LastName = " " + TimeToStr(Time[sessionstart], TIME_DATE);
+    string LastName = " " + TimeToString(Time[sessionstart]);
     // Delete old Median.
-    if (ObjectFind(0, rectangle_prefix + "Median" + Suffix + LastName) >= 0) ObjectDelete(rectangle_prefix + "Median" + Suffix + LastName);
+    ObjectDelete(rectangle_prefix + "Median" + Suffix + LastName);
     // Draw a new one.
     index = MathMax(sessionstart - MaxRange - 1, 0);
     datetime time_start, time_end;
@@ -1444,7 +1492,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, C
     ObjectSetInteger(0, rectangle_prefix + "Median" + Suffix + LastName, OBJPROP_RAY, false);
 
     // Delete old Value Area Sides.
-    if (ObjectFind(0, rectangle_prefix + "VA_LeftSide" + Suffix + LastName) >= 0) ObjectDelete(0, rectangle_prefix + "VA_LeftSide" + Suffix + LastName);
+    ObjectDelete(0, rectangle_prefix + "VA_LeftSide" + Suffix + LastName);
     // Draw a new one.
     ObjectCreate(0, rectangle_prefix + "VA_LeftSide" + Suffix + LastName, OBJ_TREND, 0, time_start, PriceOfMaxRange + up_offset * onetick, time_start, PriceOfMaxRange - down_offset * onetick + onetick);
     ObjectSetInteger(0, rectangle_prefix + "VA_LeftSide" + Suffix + LastName, OBJPROP_COLOR, ValueAreaSidesColor);
@@ -1454,7 +1502,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, C
     ObjectSetInteger(0, rectangle_prefix + "VA_LeftSide" + Suffix + LastName, OBJPROP_SELECTABLE, false);
     ObjectSetInteger(0, rectangle_prefix + "VA_LeftSide" + Suffix + LastName, OBJPROP_HIDDEN, true);
     ObjectSetInteger(0, rectangle_prefix + "VA_LeftSide" + Suffix + LastName, OBJPROP_RAY, false);
-    if (ObjectFind(0, rectangle_prefix + "VA_RightSide" + Suffix + LastName) >= 0) ObjectDelete(0, rectangle_prefix + "VA_RightSide" + Suffix + LastName);
+    ObjectDelete(0, rectangle_prefix + "VA_RightSide" + Suffix + LastName);
     // Draw a new one.
     ObjectCreate(0, rectangle_prefix + "VA_RightSide" + Suffix + LastName, OBJ_TREND, 0, time_end, PriceOfMaxRange + up_offset * onetick, time_end, PriceOfMaxRange - down_offset * onetick + onetick);
     ObjectSetInteger(0, rectangle_prefix + "VA_RightSide" + Suffix + LastName, OBJPROP_COLOR, ValueAreaSidesColor);
@@ -1466,7 +1514,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, C
     ObjectSetInteger(0, rectangle_prefix + "VA_RightSide" + Suffix + LastName, OBJPROP_RAY, false);
 
     // Delete old Value Area Top and Bottom.
-    if (ObjectFind(0, rectangle_prefix + "VA_Top" + Suffix + LastName) >= 0) ObjectDelete(0, rectangle_prefix + "VA_Top" + Suffix + LastName);
+    ObjectDelete(0, rectangle_prefix + "VA_Top" + Suffix + LastName);
     // Draw a new one.
     ObjectCreate(0, rectangle_prefix + "VA_Top" + Suffix + LastName, OBJ_TREND, 0, time_start, PriceOfMaxRange + up_offset * onetick, time_end, PriceOfMaxRange + up_offset * onetick);
     ObjectSetInteger(0, rectangle_prefix + "VA_Top" + Suffix + LastName, OBJPROP_COLOR, ValueAreaHighLowColor);
@@ -1476,7 +1524,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, C
     ObjectSetInteger(0, rectangle_prefix + "VA_Top" + Suffix + LastName, OBJPROP_SELECTABLE, false);
     ObjectSetInteger(0, rectangle_prefix + "VA_Top" + Suffix + LastName, OBJPROP_HIDDEN, true);
     ObjectSetInteger(0, rectangle_prefix + "VA_Top" + Suffix + LastName, OBJPROP_RAY, false);
-    if (ObjectFind(0, rectangle_prefix + "VA_Bottom" + Suffix + LastName) >= 0) ObjectDelete(0, rectangle_prefix + "VA_Bottom" + Suffix + LastName);
+    ObjectDelete(0, rectangle_prefix + "VA_Bottom" + Suffix + LastName);
     // Draw a new one.
     ObjectCreate(0, rectangle_prefix + "VA_Bottom" + Suffix + LastName, OBJ_TREND, 0, time_start, PriceOfMaxRange - down_offset * onetick + onetick, time_end, PriceOfMaxRange - down_offset * onetick + onetick); // Adding onetick to put the value area bottom border to its real location as PriceOfMaxRange - down_offset * onetick puts it just below the bottom TPO, which itself is 1 tick deep.
     ObjectSetInteger(0, rectangle_prefix + "VA_Bottom" + Suffix + LastName, OBJPROP_COLOR, ValueAreaHighLowColor);
@@ -1859,7 +1907,7 @@ void CheckRays()
 {
     for (int i = 0; i < SessionsNumber; i++)
     {
-        string last_name = " " + TimeToString(RememberSessionStart[i], TIME_DATE);
+        string last_name = " " + TimeToString(RememberSessionStart[i]);
         string suffix = RememberSessionSuffix[i];
         string rec_name = "";
 
@@ -1868,10 +1916,10 @@ void CheckRays()
         // Process Single Print Rays to hide those that shouldn't be visible.
         if ((HideRaysFromInvisibleSessions) && (SinglePrintRays))
         {
-            int obj_total = ObjectsTotal(ChartID(), -1, OBJ_TREND);
+            int obj_total = ObjectsTotal(ChartID(), 0, OBJ_TREND);
             for (int j = 0; j < obj_total; j++)
             {
-                string obj_name = ObjectName(ChartID(), j, -1, OBJ_TREND);
+                string obj_name = ObjectName(ChartID(), j, 0, OBJ_TREND);
                 if (StringSubstr(obj_name, 0, StringLen(rec_name + "MPSPR" + suffix + last_name)) != rec_name + "MPSPR" + suffix + last_name) continue; // Not a Single Print ray.
                 if (Time[WindowFirstVisibleBar()] >= RememberSessionStart[i]) // Too old.
                 {
@@ -1880,7 +1928,6 @@ void CheckRays()
                 else ObjectSetInteger(ChartID(), obj_name, OBJPROP_COLOR, SinglePrintColor); // Unhide.
             }
         }
-
 
         // If the median rays have to be created for the given trading session:
         if (((ShowMedianRays == AllPrevious) && (SessionsNumber - i >= 2)) ||
@@ -1895,7 +1942,7 @@ void CheckRays()
             if (!((HideRaysFromInvisibleSessions) && (Time[WindowFirstVisibleBar()] >= median_time)))
             {
                 // Delete old Median Ray.
-                if (ObjectFind(0, rec_name + "Median Ray" + suffix + last_name) >= 0) ObjectDelete(0, rec_name + "Median Ray" + suffix + last_name);
+                ObjectDelete(0, rec_name + "Median Ray" + suffix + last_name);
                 // Draw a new Median Ray.
                 ObjectCreate(0, rec_name + "Median Ray" + suffix + last_name, OBJ_TREND, 0, RememberSessionStart[i], median_price, median_time, median_price);
                 ObjectSetInteger(0, rec_name + "Median Ray" + suffix + last_name, OBJPROP_COLOR, MedianColor);
@@ -1920,7 +1967,7 @@ void CheckRays()
         if ((((ShowMedianRays == Previous) || (ShowMedianRays == PreviousCurrent)) && (SessionsNumber - i > 2)) ||
                 ((ShowMedianRays == Current) && (SessionsNumber - i > 1)))
         {
-            if (ObjectFind(0, rec_name + "Median Ray" + suffix + last_name) >= 0) ObjectDelete(0, rec_name + "Median Ray" + suffix + last_name);
+            ObjectDelete(0, rec_name + "Median Ray" + suffix + last_name);
         }
 
         // If the value area rays have to be created for the given trading session:
@@ -1937,8 +1984,8 @@ void CheckRays()
             if (!((HideRaysFromInvisibleSessions) && (Time[WindowFirstVisibleBar()] >= va_time)))
             {
                 // Delete old Value Area Rays.
-                if (ObjectFind(0, rec_name + "Value Area HighRay" + suffix + last_name) >= 0) ObjectDelete(0, rec_name + "Value Area HighRay" + suffix + last_name);
-                if (ObjectFind(0, rec_name + "Value Area LowRay" + suffix + last_name) >= 0) ObjectDelete(0, rec_name + "Value Area LowRay" + suffix + last_name);
+                ObjectDelete(0, rec_name + "Value Area HighRay" + suffix + last_name);
+                ObjectDelete(0, rec_name + "Value Area LowRay" + suffix + last_name);
     
                 // Draw a new Value Area High Ray.
                 ObjectCreate(0, rec_name + "Value Area HighRay" + suffix + last_name, OBJ_TREND, 0, RememberSessionStart[i], va_high_price, va_time, va_high_price);
@@ -1984,8 +2031,8 @@ void CheckRays()
         if ((((ShowValueAreaRays == Previous) || (ShowValueAreaRays == PreviousCurrent)) && (SessionsNumber - i > 2)) ||
                 ((ShowValueAreaRays == Current) && (SessionsNumber - i > 1)))
         {
-            if (ObjectFind(0, rec_name + "Value Area HighRay" + suffix + last_name) >= 0) ObjectDelete(0, rec_name + "Value Area HighRay" + suffix + last_name);
-            if (ObjectFind(0, rec_name + "Value Area LowRay" + suffix + last_name) >= 0) ObjectDelete(0, rec_name + "Value Area LowRay" + suffix + last_name);
+            ObjectDelete(0, rec_name + "Value Area HighRay" + suffix + last_name);
+            ObjectDelete(0, rec_name + "Value Area LowRay" + suffix + last_name);
         }
 
         if (RaysUntilIntersection == Stop_No_Rays) continue;
@@ -2187,12 +2234,14 @@ void OnTimer()
 {
     if (GetTickCount() - LastRecalculationTime < 500) return; // Do not recalculate on timer if less than 500 ms passed.
     if (HideRaysFromInvisibleSessions) CheckRays(); // Should be checked regularly if the input parameter requires ray hiding/unhiding.
+
     if (Session == Rectangle)
     {
         CheckRectangles();
         return; // No need to call RedrawLastSession() even if RightToLeft is on because in that case all Rectangles are all right-to-left and are redrawn as needed.
     }
-    if ((!RightToLeft) || (!FirstRunDone)) return; // Need to finish normal drawing before reacting to timer.
+    if (((!RightToLeft) && (!SeamlessScrollingMode)) || (!FirstRunDone)) return; // Need to finish normal drawing before reacting to timer.
+    // This what goes below works for RightToLeft mode and for seamless scrolling mode, but only after the first run has been finished.
 
     static datetime prev_converted_time = 0;
 
@@ -2203,9 +2252,29 @@ void OnTimer()
 
     if (converted_time == prev_converted_time) return; // Do not call RedrawLastSession() if the screen hasn't been scrolled.
     converted_time = prev_converted_time;
-
+    
+    if (SeamlessScrollingMode)
+    {
+        ObjectCleanup(); // Delete everything to make sure there are no leftover sessions behind the screen.
+        if (Session == Intraday) FirstRunDone = false; // Turn off because FirstRunDone should be false for Intraday sessions to draw properly in the past.
+        if ((EnableDevelopingPOC) || (AlertArrows))
+        {
+            for (int i = 0; i < Bars; i++) // Clean indicator buffers.
+            {
+                DevelopingPOC_1[i] = EMPTY_VALUE;
+                DevelopingPOC_2[i] = EMPTY_VALUE;
+                ArrowsPB[i] = EMPTY_VALUE;
+                ArrowsCC[i] = EMPTY_VALUE;
+                ArrowsGC[i] = EMPTY_VALUE;
+            }
+        }
+    }
+    
     // Check right-most time - did it change?
     RedrawLastSession();
+    
+    if ((SeamlessScrollingMode) && (Session == Intraday)) FirstRunDone = true; // Turn back on after processing Intraday sessions.
+    
     LastRecalculationTime = GetTickCount(); // Remember last calculation time.
 }
 
@@ -2533,7 +2602,7 @@ void RemoveSinglePrintMark(const double price, const int sessionstart, const str
     string LastNameStart = " " + TimeToString(Time[t]) + " ";
     string LastName = LastNameStart + DoubleToString(price, _Digits);
 
-    if (ObjectFind(0, rectangle_prefix + "MPSP" + Suffix + LastName) >= 0) ObjectDelete(rectangle_prefix + "MPSP" + Suffix + LastName);
+    ObjectDelete(rectangle_prefix + "MPSP" + Suffix + LastName);
 }
 
 void PutSinglePrintRay(const double price, const int sessionstart, const string rectangle_prefix, const color spr_color)
@@ -2564,24 +2633,28 @@ void PutSinglePrintRay(const double price, const int sessionstart, const string 
 
 void RemoveSinglePrintRay(const double price, const int sessionstart, const string rectangle_prefix)
 {
-    datetime t = Time[sessionstart + 1];
-    if (ShowSinglePrint == Rightside) t = Time[sessionstart];
+    datetime t = Time[sessionstart];
 
     string LastNameStart = " " + TimeToString(t) + " ";
     string LastName = LastNameStart + DoubleToString(price, _Digits);
-
-    if (ObjectFind(0, rectangle_prefix + "MPSPR" + Suffix + LastName) >= 0) ObjectDelete(rectangle_prefix + "MPSPR" + Suffix + LastName);
+    
+    ObjectDelete(0, rectangle_prefix + "MPSPR" + Suffix + LastName);
 }
 
 // Called only when RightToLeft is on to update the right-most session.
 void RedrawLastSession()
 {
-    if (StartFromCurrentSession) StartDate = Time[0];
+    if (SeamlessScrollingMode)
+    {
+        int last_visible_bar = WindowFirstVisibleBar() - WindowBarsPerChart() + 1;
+        if (last_visible_bar < 0) last_visible_bar = 0;
+        StartDate = Time[last_visible_bar];
+    }
+    else if (StartFromCurrentSession) StartDate = Time[0];
     else StartDate = StartFromDate;
 
     // Get start and end bar numbers of the given session.
     int sessionend = FindSessionEndByDate(StartDate);
-
     int sessionstart = FindSessionStart(sessionend);
     if (sessionstart == -1)
     {
@@ -2589,26 +2662,65 @@ void RedrawLastSession()
         return;
     }
 
-    // Jump to the last one.
-    int SessionToStart = _SessionsToCount - 1;
-
-    if (Session == Intraday)
-    {
-        if (!ProcessIntradaySession(sessionstart, sessionend, SessionToStart)) return;
-    }
+    int SessionToStart = 0;
+    // In all cases except for the seamless scrolling mode, jump to the latest session.
+    if (!SeamlessScrollingMode) SessionToStart = _SessionsToCount - 1;
     else
     {
-        if (Session == Daily) Max_number_of_bars_in_a_session = PeriodSeconds(PERIOD_D1) / PeriodSeconds();
-        else if (Session == Weekly) Max_number_of_bars_in_a_session = 604800 / PeriodSeconds();
-        else if (Session == Monthly) Max_number_of_bars_in_a_session = 2678400 / PeriodSeconds();
-        if (SaturdaySunday == Append_Saturday_Sunday)
+        // Move back to the oldest session to count to start from it.
+        for (int i = 1; i < _SessionsToCount; i++)
         {
-            // The start is on Sunday - add remaining time.
-            if (TimeDayOfWeek(Time[sessionstart]) == 0) Max_number_of_bars_in_a_session += (24 * 3600 - (TimeHour(Time[sessionstart]) * 3600 + TimeMinute(Time[sessionstart]) * 60)) / PeriodSeconds();
-            // The end is on Saturday. +1 because even 0:00 bar deserves a bar.
-            if (TimeDayOfWeek(Time[sessionend]) == 6) Max_number_of_bars_in_a_session += ((TimeHour(Time[sessionend]) * 3600 + TimeMinute(Time[sessionend]) * 60)) / PeriodSeconds() + 1;
+            sessionend = sessionstart + 1;
+            if (sessionend >= Bars) return;
+            if (SaturdaySunday == Ignore_Saturday_Sunday)
+            {
+                // Pass through Sunday and Saturday.
+                while ((TimeDayOfWeek(Time[sessionend]) == 0) || (TimeDayOfWeek(Time[sessionend]) == 6))
+                {
+                    sessionend++;
+                    if (sessionend >= Bars) break;
+                }
+            }
+            sessionstart = FindSessionStart(sessionend);
         }
-        if (!ProcessSession(sessionstart, sessionend, SessionToStart)) return;
+    }
+
+    // We begin from the oldest session coming to the current session or to StartFromDate.
+    for (int i = SessionToStart; i < _SessionsToCount; i++)
+    {
+        if (Session == Intraday)
+        {
+            if (!ProcessIntradaySession(sessionstart, sessionend, i)) return;
+        }
+        else
+        {
+            if (Session == Daily) Max_number_of_bars_in_a_session = PeriodSeconds(PERIOD_D1) / PeriodSeconds();
+            else if (Session == Weekly) Max_number_of_bars_in_a_session = 604800 / PeriodSeconds();
+            else if (Session == Monthly) Max_number_of_bars_in_a_session = 2678400 / PeriodSeconds();
+            if (SaturdaySunday == Append_Saturday_Sunday)
+            {
+                // The start is on Sunday - add remaining time.
+                if (TimeDayOfWeek(Time[sessionstart]) == 0) Max_number_of_bars_in_a_session += (24 * 3600 - (TimeHour(Time[sessionstart]) * 3600 + TimeMinute(Time[sessionstart]) * 60)) / PeriodSeconds();
+                // The end is on Saturday. +1 because even 0:00 bar deserves a bar.
+                if (TimeDayOfWeek(Time[sessionend]) == 6) Max_number_of_bars_in_a_session += ((TimeHour(Time[sessionend]) * 3600 + TimeMinute(Time[sessionend]) * 60)) / PeriodSeconds() + 1;
+            }
+            if (!ProcessSession(sessionstart, sessionend, i)) return;
+        }
+        // Go to the newer session only if there is one or more left.
+        if (_SessionsToCount - i > 1)
+        {
+            sessionstart = sessionend - 1;
+            if (SaturdaySunday == Ignore_Saturday_Sunday)
+            {
+                // Pass through Sunday and Saturday.
+                while ((TimeDayOfWeek(Time[sessionstart]) == 0) || (TimeDayOfWeek(Time[sessionstart]) == 6))
+                {
+                    sessionstart--;
+                    if (sessionstart == 0) break;
+                }
+            }
+            sessionend = FindSessionEndByDate(Time[sessionstart]);
+        }
     }
 
     if ((ShowValueAreaRays != None) || (ShowMedianRays != None)) CheckRays();
@@ -2753,7 +2865,7 @@ void CheckAlerts()
     // Skip alerts if alerts are disabled for Median, for Value Area, and for Single Print rays.
     if ((!AlertForMedian) && (!AlertForValueArea) && (!AlertForSinglePrint)) return;
     // Skip alerts if no cross type is chosen.
-    if ((!AlertOnPriceBreak) && (!AlertOnBarClose) && (!AlertOnGapCross)) return;
+    if ((!AlertOnPriceBreak) && (!AlertOnCandleClose) && (!AlertOnGapCross)) return;
     // Skip alerts if only closed bar should be checked and it has already been done.
     if ((AlertCheckBar == CheckPreviousBar) && (LastAlertTime == Time[0])) return;
 
@@ -2780,22 +2892,28 @@ void CheckAlerts()
                 if ((Close_prev != EMPTY_VALUE) && (((Close[0] >= level) && (Close_prev < level)) || ((Close[0] <= level) && (Close_prev > level))))
                 {
                     DoAlerts(PriceBreak, object_name);
+                    ArrowsPB[0] = Close[0];
                 }
+                else ArrowsPB[0] = EMPTY_VALUE;
                 Close_prev = Close[0];
             }
-            if (AlertOnBarClose) // Candle close alerts.
+            if (AlertOnCandleClose) // Candle close alerts.
             {
                 if (((Close[0] >= level) && (Close[1] < level)) || ((Close[0] <= level) && (Close[1] > level)))
                 {
                     DoAlerts(CandleCloseCrossover, object_name);
+                    ArrowsCC[0] = Close[0];
                 }
+                else ArrowsCC[0] = EMPTY_VALUE;
             }
             if (AlertOnGapCross) // Gap cross alerts.
             {
                 if (((Open[0] > level) && (High[1] < level)) || ((Open[0] < level) && (Low[1] > level)))
                 {
                     DoAlerts(GapCrossover, object_name);
+                    ArrowsGC[0] = level;
                 }
+                else ArrowsGC[0] = EMPTY_VALUE;
             }
         }
         // Price breaks (using pre-previous High and previous Close), candle closes, and gap crosses using Close[1].
@@ -2806,13 +2924,15 @@ void CheckAlerts()
                 if (((High[1] >= level) && (Close[1] < level) && (Close[2] < level)) || ((Low[1] <= level) && (Close[1] > level) && (Close[2] > level)))
                 {
                     DoAlerts(PriceBreak, object_name);
+                    ArrowsPB[1] = Close[1];
                 }
             }
-            if (AlertOnBarClose) // Candle close alerts.
+            if (AlertOnCandleClose) // Candle close alerts.
             {
                 if (((Close[1] >= level) && (Close[2] < level)) || ((Close[1] <= level) && (Close[2] > level)))
                 {
                     DoAlerts(CandleCloseCrossover, object_name);
+                    ArrowsCC[1] = Close[1];
                 }
             }
             if (AlertOnGapCross) // Gap cross alerts.
@@ -2820,6 +2940,7 @@ void CheckAlerts()
                 if (((Low[1] > level) && (High[2] < level)) || ((Low[2] > level) && (High[1] < level)))
                 {
                     DoAlerts(GapCrossover, object_name);
+                    ArrowsGC[1] = level;
                 }
             }
             LastAlertTime = Time[0];
