@@ -1,6 +1,6 @@
 [![Support Ukraine Badge](https://bit.ly/support-ukraine-now)](https://github.com/support-ukraine/support-ukraine)
 # Market Profile
-Market Profile indicator for MT4 and MT5 by EarnForex.com.
+Market Profile indicator for MT4, MT5, and cTrader by EarnForex.com.
 
 Market Profile shows where the price has spent more time, highlighting important levels that can be used in trading.
 
