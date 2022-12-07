@@ -8,7 +8,7 @@
 // Intraday - should be attached to M1-M15 timeframes. M5 is recommended.
 // Designed for major currency pairs, but should work also with exotic pairs, CFDs, or commodities.
 //   
-// Version 1.19
+// Version 1.20
 // Copyright 2010-2022, EarnForex.com
 // https://www.earnforex.com/metatrader-indicators/MarketProfile/
 // -------------------------------------------------------------------------------
@@ -191,7 +191,7 @@ namespace cAlgo
         [Parameter("AlertArrows: draw chart arrows on alerts.", DefaultValue = false)]
         public bool AlertArrows { get; set; }
 
-        [Parameter("AlertCheckBar: which bar to check for alerts?", DefaultValue = alert_check_bar.CheckCurrentBar)]
+        [Parameter("AlertCheckBar: which bar to check for alerts?", DefaultValue = alert_check_bar.CheckPreviousBar)]
         public alert_check_bar AlertCheckBar { get; set; }
 
         [Parameter("AlertForValueArea: alerts for Value Area (VAH, VAL) rays.", DefaultValue = false)]
@@ -211,6 +211,15 @@ namespace cAlgo
 
         [Parameter("AlertOnGapCross: bar gap above/below the ray.", DefaultValue = false)]
         public bool AlertOnGapCross { get; set; }
+
+        [Parameter("AlertArrowColorPB: arrow color for price break alerts.", DefaultValue = "Red")]
+        public string AlertArrowColorPB { get; set; }
+
+        [Parameter("AlertArrowColorCC: arrow color for candle close alerts.", DefaultValue = "Blue")]
+        public string AlertArrowColorCC { get; set; }
+
+        [Parameter("AlertArrowColorGC: arrow color for gap crossover alerts.", DefaultValue = "Yellow")]
+        public string AlertArrowColorGC { get; set; }
 
 
         [Parameter("=== Intraday settings", DefaultValue = "=================")]
@@ -289,15 +298,6 @@ namespace cAlgo
 
         [Output("Developing POC 2", LineColor = "Green", LineStyle = LineStyle.Solid, PlotType = PlotType.DiscontinuousLine, Thickness = 5)]
         public IndicatorDataSeries DevelopingPOC_2 { get; set; }
-
-        [Output("Price break", LineColor = "Red", PlotType = PlotType.Points, Thickness = 5)]
-        public IndicatorDataSeries ArrowsPB { get; set; }
-
-        [Output("Candle close crossover", LineColor = "Blue", PlotType = PlotType.Points, Thickness = 5)]
-        public IndicatorDataSeries ArrowsCC { get; set; }
-
-        [Output("Gap crossover", LineColor = "Yellow", PlotType = PlotType.Points, Thickness = 5)]
-        public IndicatorDataSeries ArrowsGC { get; set; }
 
         #endregion
 
@@ -407,6 +407,7 @@ namespace cAlgo
             public double Max;
             public double Min;
             public DateTime Start;
+            public DateTime End;
             public string Suffix;
 
             public SessionInfo() { }
@@ -488,6 +489,7 @@ namespace cAlgo
         private DateTime LastAlertTime_GapCross = DateTime.MinValue; // For CheckCurrentBar alerts.
         private DateTime LastAlertTime = DateTime.MinValue; // For CheckPreviousBar alerts;
         private double Close_prev = double.NaN;             // Previous price value for Price Break alerts.
+        private int ArrowsCounter = 0;                      // Counter for naming of alert arrows.
 
         // Used for ColorBullBear.
         private bar_direction CurrentBarDirection = bar_direction.Neutral;
@@ -893,7 +895,7 @@ namespace cAlgo
                 }
             }
 
-            if (ShowValueAreaRays != sessions_to_draw_rays.None || ShowMedianRays != sessions_to_draw_rays.None)
+            if ((ShowValueAreaRays != sessions_to_draw_rays.None) || (ShowMedianRays != sessions_to_draw_rays.None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays)))
                 CheckRays();
 
             FirstRunDone = true;
@@ -937,15 +939,12 @@ namespace cAlgo
                 if (Session == session_period.Intraday)
                     FirstRunDone = false; // Turn off because FirstRunDone should be false for Intraday sessions to draw properly in the past.
 
-                if (EnableDevelopingPOC || AlertArrows)
+                if (EnableDevelopingPOC)
                 {
                     for (int i = Bars.Count - 1; i >= 0; i--) // Clean indicator buffers.
                     {
                         DevelopingPOC_1[i] = double.NaN;
                         DevelopingPOC_2[i] = double.NaN;
-                        ArrowsPB[i] = double.NaN;
-                        ArrowsCC[i] = double.NaN;
-                        ArrowsGC[i] = double.NaN;
                     }
                 }
             }
@@ -1633,7 +1632,7 @@ namespace cAlgo
             for (int i = 0; i < MPR_Array.Count; i++)
                 MPR_Process(i);
 
-            if (ShowValueAreaRays != sessions_to_draw_rays.None || ShowMedianRays != sessions_to_draw_rays.None)
+            if ((ShowValueAreaRays != sessions_to_draw_rays.None) || (ShowMedianRays != sessions_to_draw_rays.None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays)))
                 CheckRays();
 
             LastRecalculationTime = DateTime.Now; // Remember last calculation time.
@@ -1806,7 +1805,10 @@ namespace cAlgo
 
             RememberSession.Add(new SessionInfo());
             RememberSession[RememberSession.Count - 1].Start = mp.RectangleTimeMin;
-
+            // Used only for Arrows:
+            if (Bars[Bars.Count - 1].OpenTime < mp.RectangleTimeMax) RememberSession[RememberSession.Count - 1].End = Bars[Bars.Count - 1].OpenTime;
+            else RememberSession[RememberSession.Count - 1].End = mp.RectangleTimeMax;
+    
             if (!new_bars_are_not_within_rectangle || current_bar_changed_within_boundaries || rectangle_changed_and_recalc_is_due || (EnableDevelopingPOC && rectangle_changed) ||
                 (mp.Number != i && RaysUntilIntersection != ways_to_stop_rays.Stop_No_Rays &&
                 (ShowMedianRays != sessions_to_draw_rays.None || ShowValueAreaRays != sessions_to_draw_rays.None)))
@@ -1844,7 +1846,9 @@ namespace cAlgo
                 if (chart_texts[i].Name.StartsWith(rectangle_prefix))
                     Chart.RemoveObject(chart_texts[i].Name);
             }
-        }
+
+            DeleteArrowsByPrefix(rectangle_prefix);
+}
 
         #endregion
 
@@ -2007,6 +2011,7 @@ namespace cAlgo
             RememberSession[session_counter].Max = SessionMax;
             RememberSession[session_counter].Min = SessionMin;
             RememberSession[session_counter].Start = Bars[sessionstart].OpenTime;
+            RememberSession[session_counter].End = Bars[sessionend].OpenTime; // Used only for Arrows.
             RememberSession[session_counter].Suffix = Suffix;
 
             // Reset PreviousSessionMax when a new session becomes the 'latest one'.
@@ -2879,32 +2884,187 @@ namespace cAlgo
                     Chart.RemoveObject(va_lowray_name);
                 }
 
-                if (RaysUntilIntersection == ways_to_stop_rays.Stop_No_Rays)
-                    continue;
-
-                if (((ShowMedianRays == sessions_to_draw_rays.Previous || ShowMedianRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i == 2) ||
-                    ((ShowMedianRays == sessions_to_draw_rays.AllPrevious || ShowMedianRays == sessions_to_draw_rays.All) && SessionsNumber - i >= 2))
+                if (RaysUntilIntersection != ways_to_stop_rays.Stop_No_Rays)
                 {
-                    if (RaysUntilIntersection == ways_to_stop_rays.Stop_All_Rays ||
-                        (RaysUntilIntersection == ways_to_stop_rays.Stop_All_Rays_Except_Prev_Session && SessionsNumber - i > 2) ||
-                        (RaysUntilIntersection == ways_to_stop_rays.Stop_Only_Previous_Session && SessionsNumber - i == 2))
-                        CheckRayIntersections(median_ray_name, i + 1);
+                    if (((ShowMedianRays == sessions_to_draw_rays.Previous || ShowMedianRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i == 2) ||
+                        ((ShowMedianRays == sessions_to_draw_rays.AllPrevious || ShowMedianRays == sessions_to_draw_rays.All) && SessionsNumber - i >= 2))
+                    {
+                        if (RaysUntilIntersection == ways_to_stop_rays.Stop_All_Rays ||
+                            (RaysUntilIntersection == ways_to_stop_rays.Stop_All_Rays_Except_Prev_Session && SessionsNumber - i > 2) ||
+                            (RaysUntilIntersection == ways_to_stop_rays.Stop_Only_Previous_Session && SessionsNumber - i == 2))
+                            CheckRayIntersections(median_ray_name, i + 1);
+                    }
+    
+                    if (((ShowValueAreaRays == sessions_to_draw_rays.Previous || ShowValueAreaRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i == 2) ||
+                        ((ShowValueAreaRays == sessions_to_draw_rays.AllPrevious || ShowValueAreaRays == sessions_to_draw_rays.All) && SessionsNumber - i >= 2))
+                    {
+                        if (RaysUntilIntersection == ways_to_stop_rays.Stop_All_Rays ||
+                            (RaysUntilIntersection == ways_to_stop_rays.Stop_All_Rays_Except_Prev_Session && SessionsNumber - i > 2) ||
+                            (RaysUntilIntersection == ways_to_stop_rays.Stop_Only_Previous_Session && SessionsNumber - i == 2))
+                        {
+                            CheckRayIntersections(va_highray_name, i + 1);
+                            CheckRayIntersections(va_lowray_name, i + 1);
+                        }
+                    }
                 }
 
-                if (((ShowValueAreaRays == sessions_to_draw_rays.Previous || ShowValueAreaRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i == 2) ||
-                    ((ShowValueAreaRays == sessions_to_draw_rays.AllPrevious || ShowValueAreaRays == sessions_to_draw_rays.All) && SessionsNumber - i >= 2))
+                // Historical arrow placement.
+                // Here we are inside a cycle through all sessions.
+                // For each session, we will pass its rays and add arrows if they are visible.
+                // Before that, it's best to check if any arrows have already been created for this session. If they have, skip.
+                if (AlertArrows)
                 {
-                    if (RaysUntilIntersection == ways_to_stop_rays.Stop_All_Rays ||
-                        (RaysUntilIntersection == ways_to_stop_rays.Stop_All_Rays_Except_Prev_Session && SessionsNumber - i > 2) ||
-                        (RaysUntilIntersection == ways_to_stop_rays.Stop_Only_Previous_Session && SessionsNumber - i == 2))
+                    // We will start checking from the next bar after session's end because previous crosses could be at different places in an uncompleted session.
+                    int bar_start = Bars.OpenTimes.GetIndexByTime(RememberSession[i].End) + 1; // Same for all rays of this session.
+                    
+                    // Single Print rays.
+                    if (AlertForSinglePrint)
                     {
-                        CheckRayIntersections(va_highray_name, i + 1);
-                        CheckRayIntersections(va_lowray_name, i + 1);
+                        foreach (var ctl in Chart.FindAllObjects<ChartTrendLine>())
+                        {
+                            string obj_name = ctl.Name;
+                            string mpspr_prefix = rec_name + "MPSPR" + suffix + last_name;
+                            if (!obj_name.StartsWith(mpspr_prefix)) continue; // Not a Single Print ray (or not this seesion's).
+                            if (ctl.Color != Color.Transparent) // Visible.
+                            {
+                                // Proceed only if no arrow has been found for this ray.
+                                if (!FindAtLeastOneArrowForRay(mpspr_prefix))
+                                {
+                                    for (int k = bar_start; k < Bars.Count; k++) // Check all bars for the given single print ray.
+                                    {
+                                        CheckAndDrawArrow(k, ctl.Y1, mpspr_prefix);
+                                    }
+                                }
+                            }
+                            else // Invisible.
+                            {
+                                DeleteArrowsByPrefix(mpspr_prefix); // Delete all arrows generated by this ray.
+                            }
+                        }
+                    }
+                    
+                    // Value Area rays.
+                    if (AlertForValueArea)
+                    {
+                        string obj_prefix = rec_name + "Value Area HighRay" + suffix + last_name;
+                        ChartTrendLine va_highray_tl = Chart.FindObject(obj_prefix) as ChartTrendLine;
+                        if (va_highray_tl != null) // Exists and visible.
+                        {
+                            if (!FindAtLeastOneArrowForRay(obj_prefix)) CheckHistoricalArrowsForNonMPSPRRays(bar_start, obj_prefix);
+                        }
+                        else
+                        {
+                            DeleteArrowsByPrefix(obj_prefix); // Delete all arrows generated by this ray.
+                        }
+                        obj_prefix = rec_name + "Value Area LowRay" + suffix + last_name;
+                        ChartTrendLine va_lowray_tl = Chart.FindObject(obj_prefix) as ChartTrendLine;
+                        if (va_lowray_tl != null) // Exists and visible.
+                        {
+                            if (!FindAtLeastOneArrowForRay(obj_prefix)) CheckHistoricalArrowsForNonMPSPRRays(bar_start, obj_prefix);
+                        }
+                        else
+                        {
+                            DeleteArrowsByPrefix(obj_prefix); // Delete all arrows generated by this ray.
+                        }
+                    }
+                    
+                    // Median rays.
+                    if (AlertForMedian)
+                    {
+                        string obj_prefix = rec_name + "Median Ray" + suffix + last_name;
+                        ChartTrendLine va_medianray_tl = Chart.FindObject(obj_prefix) as ChartTrendLine;
+                        if (va_medianray_tl != null) // Exists and visible.
+                        {
+                            if (!FindAtLeastOneArrowForRay(obj_prefix)) CheckHistoricalArrowsForNonMPSPRRays(bar_start, obj_prefix);
+                        }
+                        else
+                        {
+                            DeleteArrowsByPrefix(obj_prefix); // Delete all arrows generated by this ray.
+                        }
                     }
                 }
             }
         }
 
+        private void DeleteArrowsByPrefix(string prefix)
+        {
+            var chart_icons = Chart.FindAllObjects(ChartObjectType.Icon);
+            for (int i = chart_icons.Length - 1; i >= 0; i--)
+            {
+                if ((chart_icons[i].Name.StartsWith("ArrPB" + prefix)) ||
+                    (chart_icons[i].Name.StartsWith("ArrCC" + prefix)) ||
+                    (chart_icons[i].Name.StartsWith("ArrGC" + prefix)))
+                    Chart.RemoveObject(chart_icons[i].Name);
+            }
+        }
+
+        // Returns true if at least one arrow is found, false otherwise.
+        private bool FindAtLeastOneArrowForRay(string ray_name)
+        {
+            var chart_icons = Chart.FindAllObjects(ChartObjectType.Icon);
+            for (int i = chart_icons.Length - 1; i >= 0; i--)
+            {
+                if (chart_icons[i].Name.Contains(ray_name)) return true; // Found an rrrow for a given ray.
+            }
+            return false; // No arrows found for the ray.
+        }
+
+        // Checks and draws historical arrow alerts for Median or Value Area ray.
+        private void CheckHistoricalArrowsForNonMPSPRRays(int bar_start, string ray_name)
+        {
+            int end_bar = Bars.Count - 1;
+            ChartTrendLine ray = Chart.FindObject(ray_name) as ChartTrendLine;
+            if (ray.ExtendToInfinity != true) // Ray was stopped, need to find its end.
+            {
+                DateTime end_time = ray.Time2;
+                end_bar = Bars.OpenTimes.GetIndexByTime(end_time) - 1; // End before the new session starts.
+            }
+            for (int k = bar_start; k <= end_bar; k++) // Check all bars for the given ray.
+            {
+                CheckAndDrawArrow(k, ray.Y1, ray_name);
+            }
+        }
+
+        // Checks if any of the arrow alerts triggered on a given candle (n) with a given ray's level and places a chart object using name.
+        private void CheckAndDrawArrow(int n, double level, string ray_name)
+        {
+            // Price breaks (using pre-previous High and previous Close), candle closes, and gap crosses using Close[1].
+            if (AlertOnPriceBreak) // Price break alerts.
+            {
+                if (((Bars[n].High >= level) && (Bars[n].Close < level) && (Bars[n - 1].Close < level)) || ((Bars[n].Low <= level) && (Bars[n].Close > level) && (Bars[n - 1].Close > level)))
+                {
+                    // Draw arrow object:
+                    string obj_name = "ArrPB" + ray_name;
+                    CreateArrowObject(obj_name, Bars[n].OpenTime, Bars[n].Close, AlertArrowColorPB, ChartIconType.Circle);
+                }
+            }
+            if (AlertOnCandleClose) // Candle close alerts.
+            {
+                if (((Bars[n].Close >= level) && (Bars[n - 1].Close < level)) || ((Bars[n].Close <= level) && (Bars[n - 1].Close > level)))
+                {
+                    // Draw arrow object:
+                    string obj_name = "ArrCC" + ray_name;
+                    CreateArrowObject(obj_name, Bars[n].OpenTime, Bars[n].Close, AlertArrowColorCC, ChartIconType.Square);
+                }
+            }
+            if (AlertOnGapCross) // Gap cross alerts.
+            {
+                if (((Bars[n].Low > level) && (Bars[n - 1].High < level)) || ((Bars[n - 1].Low > level) && (Bars[n].High < level)))
+                {
+                    string obj_name = "ArrGC" + ray_name;
+                    CreateArrowObject(obj_name, Bars[n].OpenTime, level, AlertArrowColorGC, ChartIconType.Diamond);
+                }
+            }
+        }
+
+        // Creates an arrow object and sets its properties.
+        void CreateArrowObject(string name, DateTime time, double price, string colour, ChartIconType type)
+        {
+            string obj_name = name + ArrowsCounter.ToString();
+            ArrowsCounter++;
+            Chart.DrawIcon(obj_name, type, time, price, Color.FromName(colour));
+        }
+        
         #endregion
 
         #region CheckRayIntersections
@@ -3103,6 +3263,7 @@ namespace cAlgo
 
                     sessionstart = FindSessionStart(sessionend);
                 }
+                SessionsNumber = 0; // Reset previously remembered sessions as there won't be any need for them.
             }
 
             // We begin from the oldest session coming to the current session or to StartFromDate.
@@ -3154,7 +3315,7 @@ namespace cAlgo
                 }
             }
 
-            if (ShowValueAreaRays != sessions_to_draw_rays.None || ShowMedianRays != sessions_to_draw_rays.None)
+            if ((ShowValueAreaRays != sessions_to_draw_rays.None) || (ShowMedianRays != sessions_to_draw_rays.None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays)))
                 CheckRays();
         }
 
@@ -3263,7 +3424,7 @@ namespace cAlgo
         private void CheckAlerts(int index)
         {
             // No need to check further if no alert method is chosen.
-            if (!AlertNative && !AlertEmail)// && !AlertPush)
+            if (!AlertNative && !AlertEmail && !AlertArrows)// && !AlertPush)
                 return;
 
             // Skip alerts if alerts are disabled for Median, for Value Area, and for Single Print rays.
@@ -3300,10 +3461,8 @@ namespace cAlgo
                         if (!double.IsNaN(Close_prev) && ((Bars[index].Close >= level && Close_prev < level) || (Bars[index].Close <= level && Close_prev > level)))
                         {
                             DoAlerts(alert_types.PriceBreak, object_name);
-                            ArrowsPB[index] = Bars[index].Close;
+                            if (AlertArrows) CreateArrowObject("ArrPB" + object_name, Bars[index].OpenTime, Bars[index].Close, AlertArrowColorPB, ChartIconType.Circle);
                         }
-                        else
-                            ArrowsPB[0] = double.NaN;
                         Close_prev = Bars[index].Close;
                     }
 
@@ -3312,10 +3471,8 @@ namespace cAlgo
                         if ((Bars[index].Close >= level && Bars[index - 1].Close < level) || (Bars[index].Close <= level && Bars[index - 1].Close > level))
                         {
                             DoAlerts(alert_types.CandleCloseCrossover, object_name);
-                            ArrowsCC[index] = Bars[index].Close;
+                            if (AlertArrows) CreateArrowObject("ArrCC" + object_name, Bars[index].OpenTime, Bars[index].Close, AlertArrowColorCC, ChartIconType.Square);
                         }
-                        else
-                            ArrowsCC[index] = double.NaN;
                     }
 
                     if (AlertOnGapCross) // Gap cross alerts.
@@ -3323,10 +3480,8 @@ namespace cAlgo
                         if ((Bars[index].Open > level && Bars[index - 1].High < level) || (Bars[index].Open < level && Bars[index - 1].Low > level))
                         {
                             DoAlerts(alert_types.GapCrossover, object_name);
-                            ArrowsGC[index] = level;
+                            if (AlertArrows) CreateArrowObject("ArrGC" + object_name, Bars[index].OpenTime, level, AlertArrowColorGC, ChartIconType.Diamond);
                         }
-                        else
-                            ArrowsGC[index] = double.NaN;
                     }
                 }
                 // Price breaks (using pre-previous High and previous Close), candle closes, and gap crosses using Close[1].
@@ -3338,7 +3493,7 @@ namespace cAlgo
                             (Bars[index - 1].Low <= level && Bars[index - 1].Close > level && Bars[index - 2].Close > level))
                         {
                             DoAlerts(alert_types.PriceBreak, object_name);
-                            ArrowsPB[index - 1] = Bars[index - 1].Close;
+                            if (AlertArrows) CreateArrowObject("ArrPB" + object_name, Bars[index - 1].OpenTime, Bars[index - 1].Close, AlertArrowColorPB, ChartIconType.Circle);
                         }
                     }
 
@@ -3347,7 +3502,7 @@ namespace cAlgo
                         if ((Bars[index - 1].Close >= level && Bars[index - 2].Close < level) || (Bars[index - 1].Close <= level && Bars[index - 2].Close > level))
                         {
                             DoAlerts(alert_types.CandleCloseCrossover, object_name);
-                            ArrowsCC[index - 1] = Bars[index - 1].Close;
+                            if (AlertArrows) CreateArrowObject("ArrCC" + object_name, Bars[index - 1].OpenTime, Bars[index - 1].Close, AlertArrowColorCC, ChartIconType.Square);
                         }
                     }
 
@@ -3356,7 +3511,7 @@ namespace cAlgo
                         if ((Bars[index - 1].Low > level && Bars[index - 2].High < level) || (Bars[index - 2].Low > level && Bars[index - 1].High < level))
                         {
                             DoAlerts(alert_types.GapCrossover, object_name);
-                            ArrowsGC[index - 1] = level;
+                            if (AlertArrows) CreateArrowObject("ArrGC" + object_name, Bars[index - 1].OpenTime, level, AlertArrowColorGC, ChartIconType.Diamond);
                         }
                     }
 

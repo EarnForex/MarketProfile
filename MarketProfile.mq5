@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "EarnForex.com"
 #property link      "https://www.earnforex.com/metatrader-indicators/MarketProfile/"
-#property version   "1.19"
+#property version   "1.20"
 
 #property description "Displays the Market Profile indicator for intraday, daily, weekly, or monthly trading sessions."
 #property description "Daily - should be attached to M5-M30 timeframes. M30 is recommended."
@@ -19,30 +19,18 @@
 //+------------------------------------------------------------------+
 #property indicator_chart_window
 // Two buffers are used for the Developing POC display because a single buffer wouldn't support an interrupting line.
-#property indicator_plots 5
-#property indicator_buffers 5
+#property indicator_plots 2
+#property indicator_buffers 2
 #property indicator_color1  clrGreen
 #property indicator_color2  clrGreen
-#property indicator_color3  clrRed
-#property indicator_color4  clrBlue
-#property indicator_color5  clrYellow
 #property indicator_width1  5
 #property indicator_width2  5
-#property indicator_width3  5
-#property indicator_width4  5
-#property indicator_width5  5
 #property indicator_type1   DRAW_LINE
 #property indicator_type2   DRAW_LINE
-#property indicator_type3   DRAW_ARROW
-#property indicator_type4   DRAW_ARROW
-#property indicator_type5   DRAW_ARROW
 #property indicator_style1  STYLE_SOLID
 #property indicator_style2  STYLE_SOLID
 #property indicator_label1  "Developing POC"
 #property indicator_label2  "Developing POC"
-#property indicator_label3  "Price break"
-#property indicator_label4  "Candle close crossover"
-#property indicator_label5  "Gap crossover"
 
 enum color_scheme
 {
@@ -171,7 +159,7 @@ input bool           AlertNative              = false;           // AlertNative:
 input bool           AlertEmail               = false;           // AlertEmail: issue email alerts.
 input bool           AlertPush                = false;           // AlertPush: issue push-notification alerts.
 input bool           AlertArrows              = false;           // AlertArrows: draw chart arrows on alerts.
-input alert_check_bar AlertCheckBar           = CheckCurrentBar; // AlertCheckBar: which bar to check for alerts?
+input alert_check_bar AlertCheckBar           = CheckPreviousBar;// AlertCheckBar: which bar to check for alerts?
 input bool           AlertForValueArea        = false;           // AlertForValueArea: alerts for Value Area (VAH, VAL) rays.
 input bool           AlertForMedian           = false;           // AlertForMedian: alerts for POC (Median) rays' crossing.
 input bool           AlertForSinglePrint      = false;           // AlertForSinglePrint: alerts for single print rays' crossing.
@@ -181,6 +169,12 @@ input bool           AlertOnGapCross          = false;           // AlertOnGapCr
 input int            AlertArrowCodePB         = 108;             // AlertArrowCodePB: arrow code for price break alerts.
 input int            AlertArrowCodeCC         = 110;             // AlertArrowCodeCC: arrow code for candle close alerts.
 input int            AlertArrowCodeGC         = 117;             // AlertArrowCodeGC: arrow code for gap crossover alerts.
+input color          AlertArrowColorPB        = clrRed;          // AlertArrowColorPB: arrow color for price break alerts.
+input color          AlertArrowColorCC        = clrBlue;         // AlertArrowColorCC: arrow color for candle close alerts.
+input color          AlertArrowColorGC        = clrYellow;       // AlertArrowColorGC: arrow color for gap crossover alerts.
+input int            AlertArrowWidthPB        = 1;               // AlertArrowWidthPB: arrow width for price break alerts.
+input int            AlertArrowWidthCC        = 1;               // AlertArrowWidthCC: arrow width for candle close alerts.
+input int            AlertArrowWidthGC        = 1;               // AlertArrowWidthGC: arrow width for gap crossover alerts.
 
 input group "Intraday settings"
 input bool           EnableIntradaySession1      = true;
@@ -242,11 +236,13 @@ int IntradayCrossSessionDefined = -1; // For special case used only with Ignore_
 datetime LastAlertTime_CandleCross = 0, LastAlertTime_GapCross = 0; // For CheckCurrentBar alerts.
 datetime LastAlertTime = 0; // For CheckPreviousBar alerts;
 double Close_prev = EMPTY_VALUE;   // Previous price value for Price Break alerts.
+int ArrowsCounter = 0;             // Counter for naming of alert arrows.
 
 // We need to know where each session starts and its price range for when RaysUntilIntersection != Stop_No_Rays.
 // These are used also when RaysUntilIntersection == Stop_No_Rays for Intraday sessions counting.
 double RememberSessionMax[], RememberSessionMin[];
 datetime RememberSessionStart[];
+datetime RememberSessionEnd[]; // Used only for Arrows.
 string RememberSessionSuffix[];
 int SessionsNumber = 0; // Different from _SessionsToCount when working with Intraday sessions and for RaysUntilIntersection != Stop_No_Rays.
 
@@ -272,7 +268,6 @@ int mpr_total = 0;
 uint LastRecalculationTime = 0;
 
 double DevelopingPOC_1[], DevelopingPOC_2[]; // Indicator buffers for Developing POC.
-double ArrowsPB[], ArrowsCC[], ArrowsGC[]; // Indicator buffers for alert arrows.
 
 //+------------------------------------------------------------------+
 //| Custom indicator initialization function                         |
@@ -422,15 +417,6 @@ int OnInit()
     PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
     SetIndexBuffer(1, DevelopingPOC_2);
     PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-    SetIndexBuffer(2, ArrowsPB);
-    PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-    PlotIndexSetInteger(2, PLOT_ARROW, AlertArrowCodePB);
-    SetIndexBuffer(3, ArrowsCC);
-    PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-    PlotIndexSetInteger(3, PLOT_ARROW, AlertArrowCodeCC);
-    SetIndexBuffer(4, ArrowsGC);
-    PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-    PlotIndexSetInteger(4, PLOT_ARROW, AlertArrowCodeGC);
 
     ValueAreaPercentage_double = ValueAreaPercentage * 0.01;
 
@@ -476,16 +462,13 @@ int OnCalculate(const int rates_total,
     }
 
     // New bars arrived?
-    if (((EnableDevelopingPOC) || (AlertArrows)) && (rates_total - prev_calculated > 1) && (CleanedUpOn != rates_total))
+    if ((EnableDevelopingPOC) && (rates_total - prev_calculated > 1) && (CleanedUpOn != rates_total))
     {
         // Initialize the indicator buffers.
         for (int i = prev_calculated; i < rates_total; i++)
         {
             DevelopingPOC_1[i] = EMPTY_VALUE;
             DevelopingPOC_2[i] = EMPTY_VALUE;
-            ArrowsPB[i] = EMPTY_VALUE;
-            ArrowsCC[i] = EMPTY_VALUE;
-            ArrowsGC[i] = EMPTY_VALUE;
         }
         CleanedUpOn = rates_total; // To prevent cleaning up the buffers again and again when the platform just starts.
     }
@@ -621,7 +604,7 @@ int OnCalculate(const int rates_total,
         }
     }
 
-    if ((ShowValueAreaRays != None) || (ShowMedianRays != None)) CheckRays();
+    if ((ShowValueAreaRays != None) || (ShowMedianRays != None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays))) CheckRays();
 
     FirstRunDone = true;
 
@@ -1081,39 +1064,43 @@ datetime PutDot(const double price, const int start_bar, const int range, const 
 void ObjectCleanup(string rectangle_prefix = "")
 {
     // Delete all rectangles with set prefix.
-    ObjectsDeleteAll(0, rectangle_prefix + "MP" + Suffix, -1, OBJ_RECTANGLE);
-    ObjectsDeleteAll(0, rectangle_prefix + "Median" + Suffix, -1, OBJ_TREND);
-    ObjectsDeleteAll(0, rectangle_prefix + "VA_LeftSide" + Suffix, -1, OBJ_TREND);
-    ObjectsDeleteAll(0, rectangle_prefix + "VA_RightSide" + Suffix, -1, OBJ_TREND);
-    ObjectsDeleteAll(0, rectangle_prefix + "VA_Top" + Suffix, -1, OBJ_TREND);
-    ObjectsDeleteAll(0, rectangle_prefix + "VA_Bottom" + Suffix, -1, OBJ_TREND);
+    ObjectsDeleteAll(0, rectangle_prefix + "MP" + Suffix, 0, OBJ_RECTANGLE);
+    ObjectsDeleteAll(0, rectangle_prefix + "Median" + Suffix, 0, OBJ_TREND);
+    ObjectsDeleteAll(0, rectangle_prefix + "VA_LeftSide" + Suffix, 0, OBJ_TREND);
+    ObjectsDeleteAll(0, rectangle_prefix + "VA_RightSide" + Suffix, 0, OBJ_TREND);
+    ObjectsDeleteAll(0, rectangle_prefix + "VA_Top" + Suffix, 0, OBJ_TREND);
+    ObjectsDeleteAll(0, rectangle_prefix + "VA_Bottom" + Suffix, 0, OBJ_TREND);
     if (ShowValueAreaRays != None)
     {
         // Delete all trendlines with set prefix.
-        ObjectsDeleteAll(0, rectangle_prefix + "Value Area HighRay" + Suffix, -1, OBJ_TREND);
-        ObjectsDeleteAll(0, rectangle_prefix + "Value Area LowRay" + Suffix, -1, OBJ_TREND);
+        ObjectsDeleteAll(0, rectangle_prefix + "Value Area HighRay" + Suffix, 0, OBJ_TREND);
+        ObjectsDeleteAll(0, rectangle_prefix + "Value Area LowRay" + Suffix, 0, OBJ_TREND);
     }
     if (ShowMedianRays != None)
     {
         // Delete all trendlines with set prefix.
-        ObjectsDeleteAll(0, rectangle_prefix + "Median Ray" + Suffix, -1, OBJ_TREND);
+        ObjectsDeleteAll(0, rectangle_prefix + "Median Ray" + Suffix, 0, OBJ_TREND);
     }
     if (ShowKeyValues)
     {
         // Delete all text labels with set prefix.
-        ObjectsDeleteAll(0, rectangle_prefix + "VAH" + Suffix, -1, OBJ_TEXT);
-        ObjectsDeleteAll(0, rectangle_prefix + "VAL" + Suffix, -1, OBJ_TEXT);
-        ObjectsDeleteAll(0, rectangle_prefix + "POC" + Suffix, -1, OBJ_TEXT);
+        ObjectsDeleteAll(0, rectangle_prefix + "VAH" + Suffix, 0, OBJ_TEXT);
+        ObjectsDeleteAll(0, rectangle_prefix + "VAL" + Suffix, 0, OBJ_TEXT);
+        ObjectsDeleteAll(0, rectangle_prefix + "POC" + Suffix, 0, OBJ_TEXT);
     }
     if (ShowSinglePrint)
     {
         // Delete all Single Print marks.
-        ObjectsDeleteAll(0, rectangle_prefix + "MPSP" + Suffix, -1, OBJ_RECTANGLE);
+        ObjectsDeleteAll(0, rectangle_prefix + "MPSP" + Suffix, 0, OBJ_RECTANGLE);
     }
     if (SinglePrintRays)
     {
         // Delete all Single Print rays.
-        ObjectsDeleteAll(0, rectangle_prefix + "MPSPR" + Suffix, -1, OBJ_TREND);
+        ObjectsDeleteAll(0, rectangle_prefix + "MPSPR" + Suffix, 0, OBJ_TREND);
+    }
+    if (AlertArrows)
+    {
+        DeleteArrowsByPrefix(rectangle_prefix);
     }
 }
 
@@ -1246,6 +1233,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
             ArrayResize(RememberSessionMin, SessionsNumber);
             ArrayResize(RememberSessionStart, SessionsNumber);
             ArrayResize(RememberSessionSuffix, SessionsNumber);
+            ArrayResize(RememberSessionEnd, SessionsNumber); // Used only for Arrows.
         }
     }
 
@@ -1257,6 +1245,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
     RememberSessionMin[session_counter] = SessionMin;
     RememberSessionStart[session_counter] = Time[sessionstart];
     RememberSessionSuffix[session_counter] = Suffix;
+    RememberSessionEnd[session_counter] = Time[sessionend]; // Used only for Arrows.
 
     // Used to make sure that SessionMax increments only by 'onetick' increments.
     // This is needed only when updating the latest trading session and PointMultiplier_calculated > 1.
@@ -2144,26 +2133,184 @@ void CheckRays()
             ObjectDelete(0, rec_name + "Value Area LowRay" + suffix + last_name);
         }
 
-        if (RaysUntilIntersection == Stop_No_Rays) continue;
-
-        if ((((ShowMedianRays == Previous) || (ShowMedianRays == PreviousCurrent)) && (SessionsNumber - i == 2)) || (((ShowMedianRays == AllPrevious) || (ShowMedianRays == All)) && (SessionsNumber - i >= 2)))
+        if (RaysUntilIntersection != Stop_No_Rays)
         {
-            if ((RaysUntilIntersection == Stop_All_Rays)
-                    || ((RaysUntilIntersection == Stop_All_Rays_Except_Prev_Session) && (SessionsNumber - i > 2))
-                    || ((RaysUntilIntersection == Stop_Only_Previous_Session) && (SessionsNumber - i == 2)))
-                CheckRayIntersections(rec_name + "Median Ray" + suffix + last_name, i + 1);
-        }
-        if ((((ShowValueAreaRays == Previous) || (ShowValueAreaRays == PreviousCurrent)) && (SessionsNumber - i == 2)) || (((ShowValueAreaRays == AllPrevious) || (ShowValueAreaRays == All)) && (SessionsNumber - i >= 2)))
-        {
-            if ((RaysUntilIntersection == Stop_All_Rays)
-                    || ((RaysUntilIntersection == Stop_All_Rays_Except_Prev_Session) && (SessionsNumber - i > 2))
-                    || ((RaysUntilIntersection == Stop_Only_Previous_Session) && (SessionsNumber - i == 2)))
+            if ((((ShowMedianRays == Previous) || (ShowMedianRays == PreviousCurrent)) && (SessionsNumber - i == 2)) || (((ShowMedianRays == AllPrevious) || (ShowMedianRays == All)) && (SessionsNumber - i >= 2)))
             {
-                CheckRayIntersections(rec_name + "Value Area HighRay" + suffix + last_name, i + 1);
-                CheckRayIntersections(rec_name + "Value Area LowRay" + suffix + last_name, i + 1);
+                if ((RaysUntilIntersection == Stop_All_Rays)
+                        || ((RaysUntilIntersection == Stop_All_Rays_Except_Prev_Session) && (SessionsNumber - i > 2))
+                        || ((RaysUntilIntersection == Stop_Only_Previous_Session) && (SessionsNumber - i == 2)))
+                    CheckRayIntersections(rec_name + "Median Ray" + suffix + last_name, i + 1);
+            }
+            if ((((ShowValueAreaRays == Previous) || (ShowValueAreaRays == PreviousCurrent)) && (SessionsNumber - i == 2)) || (((ShowValueAreaRays == AllPrevious) || (ShowValueAreaRays == All)) && (SessionsNumber - i >= 2)))
+            {
+                if ((RaysUntilIntersection == Stop_All_Rays)
+                        || ((RaysUntilIntersection == Stop_All_Rays_Except_Prev_Session) && (SessionsNumber - i > 2))
+                        || ((RaysUntilIntersection == Stop_Only_Previous_Session) && (SessionsNumber - i == 2)))
+                {
+                    CheckRayIntersections(rec_name + "Value Area HighRay" + suffix + last_name, i + 1);
+                    CheckRayIntersections(rec_name + "Value Area LowRay" + suffix + last_name, i + 1);
+                }
+            }
+        }
+
+        // Historical arrow placement.
+        // Here we are inside a cycle through all sessions.
+        // For each session, we will pass its rays and add arrows if they are visible.
+        // Before that, it's best to check if any arrows have already been created for this session. If they have, skip.
+        if (AlertArrows)
+        {
+            // We will start checking from the next bar after session's end because previous crosses could be at different places in an uncompleted session.
+            int bar_start = iBarShift(Symbol(), Period(), RememberSessionEnd[i]) - 1; // Same for all rays of this session.
+            
+            // Single Print rays.
+            // Single Print rays.
+            if (AlertForSinglePrint)
+            {
+                int obj_total = ObjectsTotal(ChartID(), 0, OBJ_TREND);
+                for (int j = 0; j < obj_total; j++)
+                {
+                    string obj_name = ObjectName(ChartID(), j, 0, OBJ_TREND);
+                    string obj_prefix = rec_name + "MPSPR" + suffix + last_name;
+                    if (StringSubstr(obj_name, 0, StringLen(obj_prefix)) != obj_prefix) continue; // Not a Single Print ray (or not this seesion's).
+                    if ((color)ObjectGetInteger(ChartID(), obj_name, OBJPROP_COLOR) != clrNONE) // Visible.
+                    {
+                        // Proceed only if no arrow has been found for this ray.
+                        if (!FindAtLeastOneArrowForRay(obj_prefix))
+                        {
+                            for (int k = bar_start; k >= 0; k--) // Check all bars for the given single print ray.
+                            {
+                                CheckAndDrawArrow(k, ObjectGetDouble(ChartID(), obj_name, OBJPROP_PRICE, 0), obj_prefix);
+                            }
+                        }
+                    }
+                    else // Invisible.
+                    {
+                        DeleteArrowsByPrefix(obj_prefix); // Delete all arrows generated by this ray.
+                    }
+                }
+            }
+            
+            // Value Area rays.
+            if (AlertForValueArea)
+            {
+                string obj_prefix = rec_name + "Value Area HighRay" + suffix + last_name;
+                if (ObjectFind(ChartID(), obj_prefix) >= 0) // Exists and visible.
+                {
+                    if (!FindAtLeastOneArrowForRay(obj_prefix)) CheckHistoricalArrowsForNonMPSPRRays(bar_start, obj_prefix);
+                }
+                else
+                {
+                    DeleteArrowsByPrefix(obj_prefix); // Delete all arrows generated by this ray.
+                }
+
+                obj_prefix = rec_name + "Value Area LowRay" + suffix + last_name;
+                if (ObjectFind(ChartID(), obj_prefix) >= 0) // Exists and visible.
+                {
+                    if (!FindAtLeastOneArrowForRay(obj_prefix)) CheckHistoricalArrowsForNonMPSPRRays(bar_start, obj_prefix);
+                }
+                else
+                {
+                    DeleteArrowsByPrefix(obj_prefix); // Delete all arrows generated by this ray.
+                }
+            }
+            
+            // Median rays.
+            if (AlertForMedian)
+            {
+                string obj_prefix = rec_name + "Median Ray" + suffix + last_name;
+                if (ObjectFind(ChartID(), obj_prefix) >= 0) // Exists and visible.
+                {
+                    if (!FindAtLeastOneArrowForRay(obj_prefix)) CheckHistoricalArrowsForNonMPSPRRays(bar_start, obj_prefix);
+                }
+                else
+                {
+                    DeleteArrowsByPrefix(obj_prefix); // Delete all arrows generated by this ray.
+                }
             }
         }
     }
+}
+
+// Delete arrows by prefix (complete or incomplete).
+void DeleteArrowsByPrefix(const string prefix)
+{
+    // Delete all arrows.
+    ObjectsDeleteAll(ChartID(), "ArrCC" + prefix, 0, OBJ_ARROW);
+    ObjectsDeleteAll(ChartID(), "ArrGC" + prefix, 0, OBJ_ARROW);
+    ObjectsDeleteAll(ChartID(), "ArrPB" + prefix, 0, OBJ_ARROW);    
+}
+
+// Returns true if at least one arrow is found, false otherwise.
+bool FindAtLeastOneArrowForRay(const string ray_name)
+{
+    int objects_total = ObjectsTotal(ChartID(), 0, OBJ_ARROW);
+    for (int i = 0; i < objects_total; i++)
+    {
+        string obj_name = ObjectName(ChartID(), i, 0, OBJ_ARROW);
+        if (StringFind(obj_name, ray_name) != -1) return true; // Found an rrrow for a given ray.
+    }
+    return false; // No arrows found for the ray.
+}
+
+// Checks and draws historical arrow alerts for Median or Value Area ray.
+void CheckHistoricalArrowsForNonMPSPRRays(const int bar_start, const string ray_name)
+{
+    int end_bar = 0;
+    if (ObjectGetInteger(ChartID(), ray_name, OBJPROP_RAY_RIGHT) != true) // Ray was stopped, need to find its end.
+    {
+        datetime end_time = (datetime)ObjectGetInteger(ChartID(), ray_name, OBJPROP_TIME, 1);
+        end_bar = iBarShift(Symbol(), Period(), end_time) + 1; // End before the new session starts.
+    }
+    for (int k = bar_start; k >= end_bar; k--) // Check all bars for the given ray.
+    {
+        CheckAndDrawArrow(k, ObjectGetDouble(ChartID(), ray_name, OBJPROP_PRICE, 0), ray_name);
+    }
+}
+
+// Checks if any of the arrow alerts triggered on a given candle (n) with a given ray's level and places a chart object using name.
+void CheckAndDrawArrow(const int n, const double level, const string ray_name)
+{
+    // Price breaks (using pre-previous High and previous Close), candle closes, and gap crosses using Close[1].
+    if (AlertOnPriceBreak) // Price break alerts.
+    {
+        if (((iHigh(Symbol(), Period(), n) >= level) && (iClose(Symbol(), Period(), n) < level) && (iClose(Symbol(), Period(), n + 1) < level)) || ((iLow(Symbol(), Period(), n) <= level) && (iClose(Symbol(), Period(), n) > level) && (iClose(Symbol(), Period(), n + 1) > level)))
+        {
+            // Draw arrow object:
+            string obj_name = "ArrPB" + ray_name;
+            CreateArrowObject(obj_name, iTime(Symbol(), Period(), n), iClose(Symbol(), Period(), n), AlertArrowCodePB, AlertArrowColorPB, AlertArrowWidthPB, "Price Break");
+        }
+    }
+    if (AlertOnCandleClose) // Candle close alerts.
+    {
+        if (((iClose(Symbol(), Period(), n) >= level) && (iClose(Symbol(), Period(), n + 1) < level)) || ((iClose(Symbol(), Period(), n) <= level) && (iClose(Symbol(), Period(), n + 1) > level)))
+        {
+            // Draw arrow object:
+            string obj_name = "ArrCC" + ray_name;
+            CreateArrowObject(obj_name, iTime(Symbol(), Period(), n), iClose(Symbol(), Period(), n), AlertArrowCodeCC, AlertArrowColorCC, AlertArrowWidthCC, "Candle Close");
+        }
+    }
+    if (AlertOnGapCross) // Gap cross alerts.
+    {
+        if (((iLow(Symbol(), Period(), n) > level) && (iHigh(Symbol(), Period(), n + 1) < level)) || ((iLow(Symbol(), Period(), n + 1) > level) && (iHigh(Symbol(), Period(), n) < level)))
+        {
+            string obj_name = "ArrGC" + ray_name;
+            CreateArrowObject(obj_name, iTime(Symbol(), Period(), n), level, AlertArrowCodeGC, AlertArrowColorGC, AlertArrowWidthGC, "Gap Cross");
+        }
+    }
+}
+
+// Creates an arrow object and sets its properties.
+void CreateArrowObject(const string name, const datetime time, const double price, const int code, const color colour, const int width, const string tooltip)
+{
+    string obj_name = name + IntegerToString(ArrowsCounter);
+    ArrowsCounter++;
+    ObjectCreate(ChartID(), obj_name, OBJ_ARROW, 0, time, price);
+    ObjectSetInteger(ChartID(), obj_name, OBJPROP_ARROWCODE, code);
+    ObjectSetInteger(ChartID(), obj_name, OBJPROP_COLOR, colour);
+    ObjectSetInteger(ChartID(), obj_name, OBJPROP_ANCHOR, ANCHOR_CENTER);
+    ObjectSetInteger(ChartID(), obj_name, OBJPROP_WIDTH, width);
+    ObjectSetString(ChartID(), obj_name, OBJPROP_TOOLTIP, tooltip);
 }
 
 //+------------------------------------------------------------------+
@@ -2373,15 +2520,12 @@ void OnTimer()
     {
         ObjectCleanup(); // Delete everything to make sure there are no leftover sessions behind the screen.
         if (Session == Intraday) FirstRunDone = false; // Turn off because FirstRunDone should be false for Intraday sessions to draw properly in the past.
-        if ((EnableDevelopingPOC) || (AlertArrows))
+        if (EnableDevelopingPOC)
         {
             for (int i = 0; i < Bars(Symbol(), Period()); i++) // Clean indicator buffers.
             {
                 DevelopingPOC_1[i] = EMPTY_VALUE;
                 DevelopingPOC_2[i] = EMPTY_VALUE;
-                ArrowsPB[i] = EMPTY_VALUE;
-                ArrowsCC[i] = EMPTY_VALUE;
-                ArrowsGC[i] = EMPTY_VALUE;
             }
         }
     }
@@ -2525,13 +2669,14 @@ void CheckRectangles(const double& High[], const double& Low[], const datetime& 
         ArrayResize(RememberSessionMin, SessionsNumber);
         ArrayResize(RememberSessionStart, SessionsNumber);
         ArrayResize(RememberSessionSuffix, SessionsNumber);
+        ArrayResize(RememberSessionEnd, SessionsNumber); // Used only for Arrows.
     }
 
     // Process each rectangle.
     for (int i = 0; i < mpr_total; i++)
         MPR_Array[i].Process(i, High, Low, Time, rates_total);
 
-    if ((ShowValueAreaRays != None) || (ShowMedianRays != None)) CheckRays();
+    if ((ShowValueAreaRays != None) || (ShowMedianRays != None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays))) CheckRays();
 
     LastRecalculationTime = GetTickCount(); // Remember last calculation time.
 
@@ -2699,6 +2844,9 @@ void CRectangleMP::Process(const int i, const double& High[], const double& Low[
     if (sessionstart < 0) return; // Rectangle is drawn in the future.
 
     RememberSessionStart[i] = RectangleTimeMin;
+    // Used only for Arrows:
+    if (Time[0] < RectangleTimeMax) RememberSessionEnd[i] = Time[0];
+    else RememberSessionEnd[i] = RectangleTimeMax;
 
     if ((!new_bars_are_not_within_rectangle) || (current_bar_changed_within_boundaries) || (rectangle_changed_and_recalc_is_due) || ((Number != i) && ((RaysUntilIntersection != Stop_No_Rays) && ((ShowMedianRays != None) || (ShowValueAreaRays != None))))) ProcessSession(sessionstart, sessionend, i, High, Low, Time, rates_total, &this);
 
@@ -2819,6 +2967,7 @@ void RedrawLastSession(const double& High[], const double& Low[], const datetime
             }
             sessionstart = FindSessionStart(Time, sessionend, rates_total);
         }
+        SessionsNumber = 0; // Reset previously remembered sessions as there won't be any need for them.
     }
 
     // We begin from the oldest session coming to the current session or to StartFromDate.
@@ -2859,7 +3008,7 @@ void RedrawLastSession(const double& High[], const double& Low[], const datetime
         }
     }
 
-    if ((ShowValueAreaRays != None) || (ShowMedianRays != None)) CheckRays();
+    if ((ShowValueAreaRays != None) || (ShowMedianRays != None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays))) CheckRays();
 }
 
 //+------------------------------------------------------------------+
@@ -2997,7 +3146,7 @@ void OnChartEvent(const int id, const long& lparam, const double& dparam, const 
 void CheckAlerts(const double &Open[], const double &High[], const double &Low[], const double &Close[], const datetime &Time[])
 {
     // No need to check further if no alert method is chosen.
-    if ((!AlertNative) && (!AlertEmail) && (!AlertPush)) return;
+    if ((!AlertNative) && (!AlertEmail) && (!AlertPush) && (!AlertArrows)) return;
     // Skip alerts if alerts are disabled for Median, for Value Area, and for Single Print rays.
     if ((!AlertForMedian) && (!AlertForValueArea) && (!AlertForSinglePrint)) return;
     // Skip alerts if no cross type is chosen.
@@ -3014,7 +3163,7 @@ void CheckAlerts(const double &Open[], const double &High[], const double &Low[]
         // Skip if it is either a non-ray or if this particular ray shouldn't get alerted.
         if (!(((AlertForMedian) && (StringFind(object_name, "Median Ray") > -1)) ||
             ((AlertForValueArea) && ((StringFind(object_name, "Value Area HighRay") > -1) || (StringFind(object_name, "Value Area LowRay") > -1))) ||
-            ((AlertForSinglePrint)&& (StringFind(object_name, "MPSPR") > -1) && (ObjectGetInteger(ChartID(), object_name, OBJPROP_COLOR) != clrNONE)))) continue;
+            ((AlertForSinglePrint)&& (StringFind(object_name, "MPSPR") > -1) && ((color)ObjectGetInteger(ChartID(), object_name, OBJPROP_COLOR) != clrNONE)))) continue;
 
         // If everything is fine, go on:
         
@@ -3028,9 +3177,8 @@ void CheckAlerts(const double &Open[], const double &High[], const double &Low[]
                 if ((Close_prev != EMPTY_VALUE) && (((Close[0] >= level) && (Close_prev < level)) || ((Close[0] <= level) && (Close_prev > level))))
                 {
                     DoAlerts(PriceBreak, object_name);
-                    ArrowsPB[0] = Close[0];
+                    if (AlertArrows) CreateArrowObject("ArrPB" + object_name, Time[0], Close[0], AlertArrowCodePB, AlertArrowColorPB, AlertArrowWidthPB, "Price Break");
                 }
-                else ArrowsPB[0] = EMPTY_VALUE;
                 Close_prev = Close[0];
             }
             if (AlertOnCandleClose) // Candle close alerts.
@@ -3038,18 +3186,16 @@ void CheckAlerts(const double &Open[], const double &High[], const double &Low[]
                 if (((Close[0] >= level) && (Close[1] < level)) || ((Close[0] <= level) && (Close[1] > level)))
                 {
                     DoAlerts(CandleCloseCrossover, object_name);
-                    ArrowsCC[0] = Close[0];
+                    if (AlertArrows) CreateArrowObject("ArrCC" + object_name, Time[0], Close[0], AlertArrowCodeCC, AlertArrowColorCC, AlertArrowWidthCC, "Candle Close");
                 }
-                else ArrowsCC[0] = EMPTY_VALUE;
             }
             if (AlertOnGapCross) // Gap cross alerts.
             {
                 if (((Open[0] > level) && (High[1] < level)) || ((Open[0] < level) && (Low[1] > level)))
                 {
                     DoAlerts(GapCrossover, object_name);
-                    ArrowsGC[0] = level;
+                    if (AlertArrows) CreateArrowObject("ArrGC" + object_name, Time[0], level, AlertArrowCodeGC, AlertArrowColorGC, AlertArrowWidthGC, "Gap Cross");
                 }
-                else ArrowsGC[0] = EMPTY_VALUE;
             }
         }
         // Price breaks (using pre-previous High and previous Close), candle closes, and gap crosses using Close[1].
@@ -3060,7 +3206,7 @@ void CheckAlerts(const double &Open[], const double &High[], const double &Low[]
                 if (((High[1] >= level) && (Close[1] < level) && (Close[2] < level)) || ((Low[1] <= level) && (Close[1] > level) && (Close[2] > level)))
                 {
                     DoAlerts(PriceBreak, object_name);
-                    ArrowsPB[1] = Close[1];
+                    if (AlertArrows) CreateArrowObject("ArrPB" + object_name, Time[1], Close[1], AlertArrowCodePB, AlertArrowColorPB, AlertArrowWidthPB, "Price Break");
                 }
             }
             if (AlertOnCandleClose) // Candle close alerts.
@@ -3068,7 +3214,7 @@ void CheckAlerts(const double &Open[], const double &High[], const double &Low[]
                 if (((Close[1] >= level) && (Close[2] < level)) || ((Close[1] <= level) && (Close[2] > level)))
                 {
                     DoAlerts(CandleCloseCrossover, object_name);
-                    ArrowsCC[1] = Close[1];
+                    if (AlertArrows) CreateArrowObject("ArrCC" + object_name, Time[1], Close[1], AlertArrowCodeCC, AlertArrowColorCC, AlertArrowWidthCC, "Candle Close");
                 }
             }
             if (AlertOnGapCross) // Gap cross alerts.
@@ -3076,7 +3222,7 @@ void CheckAlerts(const double &Open[], const double &High[], const double &Low[]
                 if (((Low[1] > level) && (High[2] < level)) || ((Low[2] > level) && (High[1] < level)))
                 {
                     DoAlerts(GapCrossover, object_name);
-                    ArrowsGC[1] = level;
+                    if (AlertArrows) CreateArrowObject("ArrGC" + object_name, Time[1], level, AlertArrowCodeGC, AlertArrowColorGC, AlertArrowWidthGC, "Gap Cross");
                 }
             }
             LastAlertTime = Time[0];
