@@ -1,11 +1,11 @@
 //+------------------------------------------------------------------+
 //|                                                MarketProfile.mq5 |
-//|                             Copyright © 2010-2022, EarnForex.com |
+//|                             Copyright © 2010-2023, EarnForex.com |
 //|                                       https://www.earnforex.com/ |
 //+------------------------------------------------------------------+
 #property copyright "EarnForex.com"
 #property link      "https://www.earnforex.com/metatrader-indicators/MarketProfile/"
-#property version   "1.20"
+#property version   "1.21"
 
 #property description "Displays the Market Profile indicator for intraday, daily, weekly, or monthly trading sessions."
 #property description "Daily - should be attached to M5-M30 timeframes. M30 is recommended."
@@ -405,17 +405,12 @@ int OnInit()
         PlotIndexSetInteger(1, PLOT_LINE_COLOR, clrNONE);
     }
     
-    if (!AlertArrows)
-    {
-        PlotIndexSetInteger(2, PLOT_LINE_COLOR, clrNONE);
-        PlotIndexSetInteger(3, PLOT_LINE_COLOR, clrNONE);
-        PlotIndexSetInteger(4, PLOT_LINE_COLOR, clrNONE);
-    }
-    
     // Better do this unconditionally to avoid buffer errors.
-    SetIndexBuffer(0, DevelopingPOC_1);
+    SetIndexBuffer(0, DevelopingPOC_1, INDICATOR_DATA);
+    ArraySetAsSeries(DevelopingPOC_1, true);
     PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-    SetIndexBuffer(1, DevelopingPOC_2);
+    SetIndexBuffer(1, DevelopingPOC_2, INDICATOR_DATA);
+    ArraySetAsSeries(DevelopingPOC_2, true);
     PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, EMPTY_VALUE);
 
     ValueAreaPercentage_double = ValueAreaPercentage * 0.01;

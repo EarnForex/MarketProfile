@@ -1,11 +1,11 @@
 //+------------------------------------------------------------------+
 //|                                                MarketProfile.mq4 |
-//|                             Copyright © 2010-2022, EarnForex.com |
+//|                             Copyright © 2010-2023, EarnForex.com |
 //|                                       https://www.earnforex.com/ |
 //+------------------------------------------------------------------+
 #property copyright "EarnForex.com"
 #property link      "https://www.earnforex.com/metatrader-indicators/MarketProfile/"
-#property version   "1.20"
+#property version   "1.21"
 #property strict
 
 #property description "Displays the Market Profile indicator for intraday, daily, weekly, or monthly trading sessions."
