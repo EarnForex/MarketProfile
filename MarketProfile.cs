@@ -8,8 +8,8 @@
 // Intraday - should be attached to M1-M15 timeframes. M5 is recommended.
 // Designed for major currency pairs, but should work also with exotic pairs, CFDs, or commodities.
 //   
-// Version 1.20
-// Copyright 2010-2022, EarnForex.com
+// Version 1.21
+// Copyright 2010-2023, EarnForex.com
 // https://www.earnforex.com/metatrader-indicators/MarketProfile/
 // -------------------------------------------------------------------------------
 using cAlgo.API;
