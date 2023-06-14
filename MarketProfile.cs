@@ -8,7 +8,7 @@
 // Intraday - should be attached to M1-M15 timeframes. M5 is recommended.
 // Designed for major currency pairs, but should work also with exotic pairs, CFDs, or commodities.
 //   
-// Version 1.21
+// Version 1.22
 // Copyright 2010-2023, EarnForex.com
 // https://www.earnforex.com/metatrader-indicators/MarketProfile/
 // -------------------------------------------------------------------------------
@@ -582,7 +582,7 @@ namespace cAlgo
 
                 ID = new Intraday[4];
 
-                // Check if Intraday User Settings are valid.
+                // Check if intraday user settings are valid.
                 IntradaySessionCount = 0;
                 if (!CheckIntradaySession(EnableIntradaySession1, IntradaySession1StartTime, IntradaySession1EndTime, IntradaySession1ColorScheme))
                     InitFailed = true;
@@ -593,7 +593,7 @@ namespace cAlgo
                 if (!CheckIntradaySession(EnableIntradaySession4, IntradaySession4StartTime, IntradaySession4EndTime, IntradaySession4ColorScheme))
                     InitFailed = true;
 
-                // Warn user about Intraday mode
+                // Warn user about Intraday mode.
                 if (IntradaySessionCount == 0)
                 {
                     string alert_text = "Enable at least one intraday session if you want to use Intraday mode.";
@@ -782,7 +782,7 @@ namespace cAlgo
                     return;
             }
 
-            // Calculate rectangle
+            // Calculate rectangle.
             if (Session == session_period.Rectangle) // Everything becomes very simple if rectangle sessions are used.
             {
                 CheckRectangles();

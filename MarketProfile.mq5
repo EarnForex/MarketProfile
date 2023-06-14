@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "EarnForex.com"
 #property link      "https://www.earnforex.com/metatrader-indicators/MarketProfile/"
-#property version   "1.21"
+#property version   "1.22"
 
 #property description "Displays the Market Profile indicator for intraday, daily, weekly, or monthly trading sessions."
 #property description "Daily - should be attached to M5-M30 timeframes. M30 is recommended."
@@ -116,7 +116,7 @@ input int            ValueAreaPercentage     = 70;              // ValueAreaPerc
 
 input group "Colors and looks"
 input color_scheme   ColorScheme              = Blue_to_Red;
-input color          SingleColor              = clrBlue;        // SingleColor: if ColorScheme is set to Single_Color.
+input color          SingleColor              = clrBlue;        // SingleColor: if ColorScheme is set to Single Color.
 input bool           ColorBullBear            = false;          // ColorBullBear: If true, colors are from bars' direction.
 input color          MedianColor              = clrWhite;
 input color          ValueAreaSidesColor      = clrWhite;
@@ -229,7 +229,6 @@ int IDEndHours[4];
 int IDEndMinutes[4];
 int IDEndTime[4];   // Stores IDEndHours x 60 + IDEndMinutes for comparison purposes.
 color_scheme IDColorScheme[4];
-bool IntradayCheckPassed = false;
 int IntradaySessionCount = 0;
 int _SessionsToCount;
 int IntradayCrossSessionDefined = -1; // For special case used only with Ignore_Saturday_Sunday on Monday.
@@ -323,7 +322,7 @@ int OnInit()
             InitFailed = true; // Soft INIT_FAILED.
         }
 
-        // Check if Intraday User Settings are valid.
+        // Check if intraday user settings are valid.
         IntradaySessionCount = 0;
         if (!CheckIntradaySession(EnableIntradaySession1, IntradaySession1StartTime, IntradaySession1EndTime, IntradaySession1ColorScheme)) return INIT_PARAMETERS_INCORRECT;
         if (!CheckIntradaySession(EnableIntradaySession2, IntradaySession2StartTime, IntradaySession2EndTime, IntradaySession2ColorScheme)) return INIT_PARAMETERS_INCORRECT;
@@ -350,7 +349,7 @@ int OnInit()
     // Indicator Name.
     IndicatorSetString(INDICATOR_SHORTNAME, "MarketProfile " + EnumToString(Session));
 
-    // Adaptive point multiplier. Calculate based on number of digits in quote (before plus after the dot).
+    // Adaptive point multiplier. Calculate based on number of digits in the quote (before plus after the dot).
     if (PointMultiplier == 0)
     {
         double quote;
@@ -505,7 +504,7 @@ int OnCalculate(const int rates_total,
         if ((int)TimeLocal() - Timer < ThrottleRedraw) return rates_total;
     }
 
-    // Calculate rectangle
+    // Calculate rectangle.
     if (Session == Rectangle) // Everything becomes very simple if rectangle sessions are used.
     {
         CheckRectangles(High, Low, Time, rates_total);
@@ -528,8 +527,8 @@ int OnCalculate(const int rates_total,
     }
 
     // Get start and end bar numbers of the given session.
-    int sessionend = FindSessionEndByDate(Time, StartDate, rates_total);
-    int sessionstart = FindSessionStart(Time, sessionend, rates_total);
+    int sessionend = FindSessionEndByDate(Time, StartDate, rates_total); // Finding the session's right-most bar using the date of the previous session or starting date.
+    int sessionstart = FindSessionStart(Time, sessionend, rates_total); // Finding the session's left-most bar using its end (right-most) bar.
 
     if (sessionstart == -1)
     {
@@ -1591,11 +1590,10 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
     return true;
 }
 
-//+------------------------------------------------------------------+
-//| A cycle through intraday sessions for a given day with necessary |
-//| checks.                                                          |
-//| Returns true on success, false - on failure.                     |
-//+------------------------------------------------------------------+
+//+--------------------------------------------------------------------------+
+//| A cycle through intraday sessions for a given day with necessary checks. |
+//| Returns true on success, false - on failure.                             |
+//+--------------------------------------------------------------------------+
 bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const double& High[], const double& Low[], const datetime& Time[], const int rates_total)
 {
     // 'remember_*' vars point at day start and day end throughout this function.
@@ -1672,7 +1670,7 @@ bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const
             }
         }
 
-        Max_number_of_bars_in_a_session = Max_number_of_bars_in_a_session / (PeriodSeconds() / 60);
+        Max_number_of_bars_in_a_session = Max_number_of_bars_in_a_session / (PeriodSeconds() / 60); // Convert minutes to bars.
 
         // If it is the updating stage, we need to recalculate only those intraday sessions that include the current bar.
         int hour, minute, time;
@@ -2511,6 +2509,12 @@ void OnTimer()
     static datetime prev_converted_time = 0;
     datetime converted_time = 0;
 
+    int dummy_subwindow;
+    double dummy_price;
+    ChartXYToTimePrice(0, (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS), 0, dummy_subwindow, converted_time, dummy_price);
+    if (converted_time == prev_converted_time) return; // Do not call RedrawLastSession() if the screen hasn't been scrolled.
+    prev_converted_time = converted_time;
+
     if (SeamlessScrollingMode)
     {
         ObjectCleanup(); // Delete everything to make sure there are no leftover sessions behind the screen.
@@ -2524,13 +2528,6 @@ void OnTimer()
             }
         }
     }
-
-    int dummy_subwindow;
-    double dummy_price;
-    ChartXYToTimePrice(0, (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS), 0, dummy_subwindow, converted_time, dummy_price);
-
-    if (converted_time == prev_converted_time) return; // Do not call RedrawLastSession() if the screen hasn't been scrolled.
-    converted_time = prev_converted_time;
 
     // Check right-most time - did it change?
     RedrawLastSession(High, Low, Time, rates_total);
@@ -3006,10 +3003,9 @@ void RedrawLastSession(const double& High[], const double& Low[], const datetime
     if ((ShowValueAreaRays != None) || (ShowMedianRays != None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays))) CheckRays();
 }
 
-//+------------------------------------------------------------------+
-//| Go through all prices on all N session bars from 1st to kth bar, |
-//| where k = 1..N.                                                  |
-//+------------------------------------------------------------------+
+//+----------------------------------------------------------------------------------+
+//| Go through all prices on all N session bars from 1st to kth bar, where k = 1..N. |
+//+----------------------------------------------------------------------------------+
 void CalculateDevelopingPOC(const int sessionstart, const int sessionend, const double& High[], const double& Low[], CRectangleMP* rectangle = NULL)
 {
     // Cycle through all possible end bars to calculate the Developing POC.
