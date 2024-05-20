@@ -8,8 +8,8 @@
 // Intraday - should be attached to M1-M15 timeframes. M5 is recommended.
 // Designed for major currency pairs, but should work also with exotic pairs, CFDs, or commodities.
 //   
-// Version 1.22
-// Copyright 2010-2023, EarnForex.com
+// Version 1.23
+// Copyright 2010-2024, EarnForex.com
 // https://www.earnforex.com/metatrader-indicators/MarketProfile/
 // -------------------------------------------------------------------------------
 using cAlgo.API;
@@ -47,6 +47,9 @@ namespace cAlgo
         [Parameter("Enable Developing POC.", DefaultValue = false)]
         public bool EnableDevelopingPOC { get; set; }
 
+        [Parameter("Enable Developing VAH/VAL.", DefaultValue = false)]
+        public bool EnableDevelopingVAHVAL { get; set; }
+
         [Parameter("ValueAreaPercentage: Percentage of TPO's inside Value Area.", DefaultValue = 70)]
         public int ValueAreaPercentage { get; set; }
 
@@ -61,19 +64,19 @@ namespace cAlgo
         public int ColorOpacity { get; set; }
 
         [Parameter("SingleColor: if ColorScheme is set to Single_Color.", DefaultValue = "Blue")]
-        public string SingleColor { get; set; }
+        public Color SingleColor { get; set; }
 
         [Parameter("ColorBullBear: If true, colors are from bars' direction.", DefaultValue = false)]
         public bool ColorBullBear { get; set; }
 
         [Parameter("MedianColor", DefaultValue = "White")]
-        public string MedianColor { get; set; }
+        public Color MedianColor { get; set; }
 
         [Parameter("ValueAreaSidesColor", DefaultValue = "White")]
-        public string ValueAreaSidesColor { get; set; }
+        public Color ValueAreaSidesColor { get; set; }
 
         [Parameter("ValueAreaHighLowColor", DefaultValue = "White")]
-        public string ValueAreaHighLowColor { get; set; }
+        public Color ValueAreaHighLowColor { get; set; }
 
         [Parameter("MedianStyle", DefaultValue = LineStyle.Solid)]
         public LineStyle MedianStyle { get; set; }
@@ -124,7 +127,7 @@ namespace cAlgo
         public bool ShowKeyValues { get; set; }
 
         [Parameter("KeyValuesColor: color for VAH, VAL, POC printout.", DefaultValue = "White")]
-        public string KeyValuesColor { get; set; }
+        public Color KeyValuesColor { get; set; }
 
         [Parameter("KeyValuesSize: font size for VAH, VAL, POC printout.", DefaultValue = 12)]
         public int KeyValuesSize { get; set; }
@@ -133,7 +136,7 @@ namespace cAlgo
         public single_print_type ShowSinglePrint { get; set; }
 
         [Parameter("SinglePrintColor", DefaultValue = "Gold")]
-        public string SinglePrintColor { get; set; }
+        public Color SinglePrintColor { get; set; }
 
         [Parameter("SinglePrintRays: mark Single Print edges with rays.", DefaultValue = false)]
         public bool SinglePrintRays { get; set; }
@@ -145,7 +148,7 @@ namespace cAlgo
         public int SinglePrintRayWidth { get; set; }
 
         [Parameter("ProminentMedianColor", DefaultValue = "Yellow")]
-        public string ProminentMedianColor { get; set; }
+        public Color ProminentMedianColor { get; set; }
 
         [Parameter("ProminentMedianStyle", DefaultValue = LineStyle.Solid)]
         public LineStyle ProminentMedianStyle { get; set; }
@@ -213,13 +216,13 @@ namespace cAlgo
         public bool AlertOnGapCross { get; set; }
 
         [Parameter("AlertArrowColorPB: arrow color for price break alerts.", DefaultValue = "Red")]
-        public string AlertArrowColorPB { get; set; }
+        public Color AlertArrowColorPB { get; set; }
 
         [Parameter("AlertArrowColorCC: arrow color for candle close alerts.", DefaultValue = "Blue")]
-        public string AlertArrowColorCC { get; set; }
+        public Color AlertArrowColorCC { get; set; }
 
         [Parameter("AlertArrowColorGC: arrow color for gap crossover alerts.", DefaultValue = "Yellow")]
-        public string AlertArrowColorGC { get; set; }
+        public Color AlertArrowColorGC { get; set; }
 
 
         [Parameter("=== Intraday settings", DefaultValue = "=================")]
@@ -298,6 +301,18 @@ namespace cAlgo
 
         [Output("Developing POC 2", LineColor = "Green", LineStyle = LineStyle.Solid, PlotType = PlotType.DiscontinuousLine, Thickness = 5)]
         public IndicatorDataSeries DevelopingPOC_2 { get; set; }
+
+        [Output("Developing VAH 1", LineColor = "Goldenrod", LineStyle = LineStyle.Solid, PlotType = PlotType.DiscontinuousLine, Thickness = 5)]
+        public IndicatorDataSeries DevelopingVAH_1 { get; set; }
+
+        [Output("Developing VAH 2", LineColor = "Goldenrod", LineStyle = LineStyle.Solid, PlotType = PlotType.DiscontinuousLine, Thickness = 5)]
+        public IndicatorDataSeries DevelopingVAH_2 { get; set; }
+
+        [Output("Developing VAL 1", LineColor = "Salmon", LineStyle = LineStyle.Solid, PlotType = PlotType.DiscontinuousLine, Thickness = 5)]
+        public IndicatorDataSeries DevelopingVAL_1 { get; set; }
+
+        [Output("Developing VAL 2", LineColor = "Salmon", LineStyle = LineStyle.Solid, PlotType = PlotType.DiscontinuousLine, Thickness = 5)]
+        public IndicatorDataSeries DevelopingVAL_2 { get; set; }
 
         #endregion
 
@@ -939,12 +954,16 @@ namespace cAlgo
                 if (Session == session_period.Intraday)
                     FirstRunDone = false; // Turn off because FirstRunDone should be false for Intraday sessions to draw properly in the past.
 
-                if (EnableDevelopingPOC)
+                if ((EnableDevelopingPOC) || (EnableDevelopingVAHVAL))
                 {
                     for (int i = Bars.Count - 1; i >= 0; i--) // Clean indicator buffers.
                     {
                         DevelopingPOC_1[i] = double.NaN;
                         DevelopingPOC_2[i] = double.NaN;
+                        DevelopingVAH_1[i] = double.NaN;
+                        DevelopingVAH_2[i] = double.NaN;
+                        DevelopingVAL_1[i] = double.NaN;
+                        DevelopingVAL_2[i] = double.NaN;
                     }
                 }
             }
@@ -1392,7 +1411,7 @@ namespace cAlgo
                         offset2 = 0x000003;
                         break;
                     case color_scheme.Single_Color:
-                        colour = Color.FromName(SingleColor);
+                        colour = SingleColor;
                         offset1 = 0;
                         offset2 = 0;
                         break;
@@ -1510,32 +1529,32 @@ namespace cAlgo
                 case color_scheme.Single_Color:
                     if (CurrentBarDirection == bar_direction.Bullish)
                     {
-                        colour = Color.FromName(SingleColor);
+                        colour = SingleColor;
                     }
                     else if (CurrentBarDirection == bar_direction.Bearish)
                     {
-                        int colour_hex = 0x00FFFFFF - Convert.ToInt32(Color.FromName(SingleColor).ToHexString());
+                        int colour_hex = 0x00FFFFFF - Convert.ToInt32(SingleColor.ToHexString());
                         colour = Color.FromHex(colour_hex.ToString("X4"));
                     }
                     else if (CurrentBarDirection == bar_direction.Neutral)
                     {
-                        int colour_hex = Math.Max(Convert.ToInt32(Color.FromName(SingleColor).ToHexString()), 0x00FFFFFF - Convert.ToInt32(Color.FromName(SingleColor).ToHexString()));
+                        int colour_hex = Math.Max(Convert.ToInt32(SingleColor.ToHexString()), 0x00FFFFFF - Convert.ToInt32(SingleColor.ToHexString()));
                         colour = Color.FromHex(colour_hex.ToString("X4"));
                     }
                     break;
                 default:
                     if (CurrentBarDirection == bar_direction.Bullish)
                     {
-                        colour = Color.FromName(SingleColor);
+                        colour = SingleColor;
                     }
                     else if (CurrentBarDirection == bar_direction.Bearish)
                     {
-                        int colour_hex = 0x00FFFFFF - Convert.ToInt32(Color.FromName(SingleColor).ToHexString());
+                        int colour_hex = 0x00FFFFFF - Convert.ToInt32(SingleColor.ToHexString());
                         colour = Color.FromHex(colour_hex.ToString("X4"));
                     }
                     else if (CurrentBarDirection == bar_direction.Neutral)
                     {
-                        int colour_hex = Math.Max(Convert.ToInt32(Color.FromName(SingleColor).ToHexString()), 0x00FFFFFF - Convert.ToInt32(Color.FromName(SingleColor).ToHexString()));
+                        int colour_hex = Math.Max(Convert.ToInt32(SingleColor.ToHexString()), 0x00FFFFFF - Convert.ToInt32(SingleColor.ToHexString()));
                         colour = Color.FromHex(colour_hex.ToString("X4"));
                     }
                     break;
@@ -1560,7 +1579,7 @@ namespace cAlgo
                     ObjectCleanup(MPR_Array[i].name + "_");
 
                     // Buffer cleanup for the Developing POC.
-                    if (EnableDevelopingPOC)
+                    if ((EnableDevelopingPOC) || (EnableDevelopingVAHVAL))
                     {
                         int sessionstart = Bars.OpenTimes.GetIndexByTime(MPR_Array[i].RectangleTimeMin);
                         int sessionend = Bars.OpenTimes.GetIndexByTime(MPR_Array[i].RectangleTimeMax);
@@ -1571,6 +1590,10 @@ namespace cAlgo
                         {
                             DevelopingPOC_1[j] = double.NaN;
                             DevelopingPOC_2[j] = double.NaN;
+                            DevelopingVAH_1[j] = double.NaN;
+                            DevelopingVAH_2[j] = double.NaN;
+                            DevelopingVAL_1[j] = double.NaN;
+                            DevelopingVAL_2[j] = double.NaN;
                         }
                     }
 
@@ -1671,7 +1694,7 @@ namespace cAlgo
             }
 
             // Buffer cleanup for the Developing POC. Should be run only for a changed rectangle, which isn't brand new.
-            if (EnableDevelopingPOC && rectangle_changed && mp.RectangleTimeMax != DateTime.MinValue)
+            if ((EnableDevelopingPOC || EnableDevelopingVAHVAL) && rectangle_changed && mp.RectangleTimeMax != DateTime.MinValue)
             {
                 int _sessionstart = Bars.OpenTimes.GetIndexByTime(mp.RectangleTimeMin);
                 int _sessionend = Bars.OpenTimes.GetIndexByTime(mp.RectangleTimeMax);
@@ -1682,7 +1705,12 @@ namespace cAlgo
                 {
                     DevelopingPOC_1[j] = double.NaN;
                     DevelopingPOC_2[j] = double.NaN;
+                    DevelopingVAH_1[j] = double.NaN;
+                    DevelopingVAH_2[j] = double.NaN;
+                    DevelopingVAL_1[j] = double.NaN;
+                    DevelopingVAL_2[j] = double.NaN;
                 }
+                mp.prev_Time0 = DateTime.MinValue;
             }
 
             mp.RectangleTimeMax = (mp.t1 > mp.t2 ? mp.t1 : mp.t2);
@@ -1809,7 +1837,7 @@ namespace cAlgo
             if (Bars[Bars.Count - 1].OpenTime < mp.RectangleTimeMax) RememberSession[RememberSession.Count - 1].End = Bars[Bars.Count - 1].OpenTime;
             else RememberSession[RememberSession.Count - 1].End = mp.RectangleTimeMax;
     
-            if (!new_bars_are_not_within_rectangle || current_bar_changed_within_boundaries || rectangle_changed_and_recalc_is_due || (EnableDevelopingPOC && rectangle_changed) ||
+            if (!new_bars_are_not_within_rectangle || current_bar_changed_within_boundaries || rectangle_changed_and_recalc_is_due || ((EnableDevelopingPOC || EnableDevelopingVAHVAL) && rectangle_changed) ||
                 (mp.Number != i && RaysUntilIntersection != ways_to_stop_rays.Stop_No_Rays &&
                 (ShowMedianRays != sessions_to_draw_rays.None || ShowValueAreaRays != sessions_to_draw_rays.None)))
                 ProcessSession(sessionstart, sessionend, i, mp);
@@ -2163,7 +2191,7 @@ namespace cAlgo
             // Go through all prices again, check TPOs - whether they are single and whether they aren't bordered by another single print TPOs?
             if (SinglePrintRays)
             {
-                Color spr_color = Color.FromName(SinglePrintColor); // Normal ray color.
+                Color spr_color = SinglePrintColor; // Normal ray color.
                 if (HideRaysFromInvisibleSessions && Bars[Chart.FirstVisibleBarIndex].OpenTime >= Bars[sessionstart].OpenTime)
                     spr_color = Color.Transparent; // Hide rays if behind the screen.
 
@@ -2205,8 +2233,8 @@ namespace cAlgo
                 }
             }
 
-            if (EnableDevelopingPOC)
-                CalculateDevelopingPOC(sessionstart, sessionend, rectangle); // Developing POC if necessary.
+            if ((EnableDevelopingPOC) || (EnableDevelopingVAHVAL))
+                CalculateDevelopingPOCVAHVAL(sessionstart, sessionend, rectangle); // Developing POC if necessary.
 
             double TotalTPOdouble = TotalTPO;
 
@@ -2270,7 +2298,7 @@ namespace cAlgo
                 time_start = Bars[sessionstart].OpenTime;
             }
 
-            Color m_color = Color.FromName(MedianColor);
+            Color m_color = MedianColor;
             int m_thickness = MedianWidth;
             LineStyle m_linestyle = MedianStyle;
 
@@ -2289,28 +2317,28 @@ namespace cAlgo
 
             // Draw a new one.
             Chart.DrawTrendLine(va_leftside_name, time_start, PriceOfMaxRange + up_offset * onetick, time_start, PriceOfMaxRange - down_offset * onetick + onetick,
-                Color.FromName(ValueAreaSidesColor), ValueAreaSidesWidth, ValueAreaSidesStyle);
+                ValueAreaSidesColor, ValueAreaSidesWidth, ValueAreaSidesStyle);
 
             string va_rightside_name = rectangle_prefix + "VA_RightSide" + Suffix + LastName;
             Chart.RemoveObject(va_rightside_name);
 
             // Draw a new one.
             Chart.DrawTrendLine(va_rightside_name, time_end, PriceOfMaxRange + up_offset * onetick, time_end, PriceOfMaxRange - down_offset * onetick + onetick,
-                Color.FromName(ValueAreaSidesColor), ValueAreaSidesWidth, ValueAreaSidesStyle);
+                ValueAreaSidesColor, ValueAreaSidesWidth, ValueAreaSidesStyle);
 
             string va_top_name = rectangle_prefix + "VA_Top" + Suffix + LastName;
             Chart.RemoveObject(va_top_name);
 
             // Draw a new one.
             Chart.DrawTrendLine(va_top_name, time_start, PriceOfMaxRange + up_offset * onetick, time_end, PriceOfMaxRange + up_offset * onetick,
-                Color.FromName(ValueAreaHighLowColor), ValueAreaHighLowWidth, ValueAreaHighLowStyle);
+                ValueAreaHighLowColor, ValueAreaHighLowWidth, ValueAreaHighLowStyle);
 
             string va_bottom_name = rectangle_prefix + "VA_Bottom" + Suffix + LastName;
             Chart.RemoveObject(va_bottom_name);
 
             // Draw a new one.
             Chart.DrawTrendLine(va_bottom_name, time_start, PriceOfMaxRange - down_offset * onetick + onetick, time_end, PriceOfMaxRange - down_offset * onetick + onetick,
-                Color.FromName(ValueAreaHighLowColor), ValueAreaHighLowWidth, ValueAreaHighLowStyle);
+                ValueAreaHighLowColor, ValueAreaHighLowWidth, ValueAreaHighLowStyle);
 
             // VAH, VAL, and POC printout.
             if (ShowKeyValues)
@@ -2381,7 +2409,7 @@ namespace cAlgo
             {
                 IntradaySessionCount_tmp++;
             }
-
+            
             for (int intraday_i = 0; intraday_i < IntradaySessionCount_tmp; intraday_i++)
             {
                 // Continue was triggered during the special case iteration.
@@ -2494,7 +2522,7 @@ namespace cAlgo
                                 sessiontime = Bars[sessionstart].OpenTime.AddMinutes(TimeShiftMinutes).Hour * 60 + Bars[sessionstart].OpenTime.AddMinutes(TimeShiftMinutes).Minute;
                             }
                             // This check is necessary because sessionstart may pass to the wrong day in some cases.
-                            if (sessionstart > remember_sessionstart)
+                            if (sessionstart < remember_sessionstart)
                                 sessionstart = remember_sessionstart;
                         }
                         else
@@ -2621,8 +2649,6 @@ namespace cAlgo
                         else
                         {
                             sessionstart = sessionend;
-
-                            int _start_time = Bars[sessionstart].OpenTime.AddMinutes(TimeShiftMinutes).Hour * 60 + Bars[sessionstart].OpenTime.AddMinutes(TimeShiftMinutes).Minute;
 
                             while (sessionstart >= 0 &&
                                 (((Bars[sessionstart].OpenTime.AddMinutes(TimeShiftMinutes).Hour * 60 + Bars[sessionstart].OpenTime.AddMinutes(TimeShiftMinutes).Minute >= ID[intraday_i].StartTime) &&
@@ -2778,7 +2804,7 @@ namespace cAlgo
                         if (Bars[Chart.FirstVisibleBarIndex].OpenTime >= RememberSession[i].Start) // Too old.
                             ctl.Color = Color.Transparent; // Hide
                         else
-                            ctl.Color = Color.FromName(SinglePrintColor); // Unhide
+                            ctl.Color = SinglePrintColor; // Unhide
                     }
                 }
 
@@ -3058,11 +3084,11 @@ namespace cAlgo
         }
 
         // Creates an arrow object and sets its properties.
-        void CreateArrowObject(string name, DateTime time, double price, string colour, ChartIconType type)
+        void CreateArrowObject(string name, DateTime time, double price, Color colour, ChartIconType type)
         {
             string obj_name = name + ArrowsCounter.ToString();
             ArrowsCounter++;
-            Chart.DrawIcon(obj_name, type, time, price, Color.FromName(colour));
+            Chart.DrawIcon(obj_name, type, time, price, colour);
         }
         
         #endregion
@@ -3098,7 +3124,7 @@ namespace cAlgo
         //+------------------------------------------------------------------+
         private void ValuePrintOut(string obj_name, DateTime time, double price, cAlgo.API.HorizontalAlignment ha, VerticalAlignment va)
         {
-            ChartText text = Chart.FindObject(obj_name) as ChartText;
+            ChartText text = (ChartText)Chart.FindObject(obj_name);
             // Find object if it exists.
             if (text != null)
             {
@@ -3108,7 +3134,7 @@ namespace cAlgo
             }
             else
             {
-                text = Chart.DrawText(obj_name, price.ToString("F" + Symbol.Digits.ToString()), time, price, Color.FromName(KeyValuesColor));
+                text = Chart.DrawText(obj_name, price.ToString("F" + Symbol.Digits.ToString()), time, price, KeyValuesColor);
                 text.FontSize = KeyValuesSize;
                 text.HorizontalAlignment = ha;
                 text.VerticalAlignment = va;
@@ -3134,13 +3160,13 @@ namespace cAlgo
             string LastName = LastNameStart + price.ToString("F" + Symbol.Digits.ToString());
 
             string mpsp_name = rectangle_prefix + "MPSP" + Suffix + LastName;
-            ChartRectangle mpsp_r = Chart.FindObject(mpsp_name) as ChartRectangle;
+            ChartRectangle mpsp_r = (ChartRectangle)Chart.FindObject(mpsp_name);
 
             // If already there - ignore.
             if (mpsp_r != null)
                 return;
 
-            mpsp_r = Chart.DrawRectangle(mpsp_name, Bars[t1].OpenTime, price, Bars[t2].OpenTime, price - onetick, Color.FromName(SinglePrintColor));
+            mpsp_r = Chart.DrawRectangle(mpsp_name, Bars[t1].OpenTime, price, Bars[t2].OpenTime, price - onetick, SinglePrintColor);
             if (fill)
                 mpsp_r.IsFilled = true;
         }
@@ -3183,7 +3209,7 @@ namespace cAlgo
             string LastName = LastNameStart + price.ToString("F" + Symbol.Digits.ToString());
 
             string mpspr_name = rectangle_prefix + "MPSPR" + Suffix + LastName;
-            ChartTrendLine mpspr_tl = Chart.FindObject(mpspr_name) as ChartTrendLine;
+            ChartTrendLine mpspr_tl = (ChartTrendLine)Chart.FindObject(mpspr_name);
 
             // If already there - ignore.
             if (mpspr_tl != null)
@@ -3321,12 +3347,12 @@ namespace cAlgo
 
         #endregion
 
-        #region CalculateDevelopingPOC
+        #region CalculateDevelopingPOCVAHVAL
         //+------------------------------------------------------------------+
         //| Go through all prices on all N session bars from 1st to kth bar, |
         //| where k = 1..N.                                                  |
         //+------------------------------------------------------------------+
-        private void CalculateDevelopingPOC(int sessionstart, int sessionend, CRectangleMP rectangle)
+        private void CalculateDevelopingPOCVAHVAL(int sessionstart, int sessionend, CRectangleMP rectangle)
         {
             // Cycle through all possible end bars to calculate the Developing POC.
             for (int max_bar = sessionstart; max_bar <= sessionend; max_bar++)
@@ -3351,6 +3377,13 @@ namespace cAlgo
                 int DevMaxRange = 0; // Maximum range for the Developing POC.
                 double PriceOfMaxRange = double.NaN;
 
+                // Will be necessary for Developing VAH/VAL calculation.
+                int TotalTPO = 0; // Total amount of dots (TPO's).
+                // Possible price levels if multiplied to integer.
+                double dmax = (LocalMax - LocalMin) / onetick;
+                int max = (int)Math.Round(dmax + 2); // + 2 because further we will be possibly checking array at SessionMax + 1.
+                int[] TPOperPrice = new int[max];
+
                 // Cycle by price inside the local boundaries:
                 for (double price = LocalMax; price >= LocalMin; price -= onetick)
                 {
@@ -3371,51 +3404,100 @@ namespace cAlgo
                                 PriceOfMaxRange = price;
                                 DistanceToCenter = Math.Abs(price - (LocalMin + (LocalMax - LocalMin) / 2));
                             }
+                            // Remember the number of encountered bars for this price for Developing VAH/VAL.
+                            int idx = (int)Math.Round((price - LocalMin) / onetick);
+                            TPOperPrice[idx]++;
+                            TotalTPO++;
                             range++;
                         }
                     }
                 }
-
-                // Both buffer are empty:
-                if (double.IsNaN(DevelopingPOC_1[max_bar - 1]) && double.IsNaN(DevelopingPOC_2[max_bar - 1]))
+                if (EnableDevelopingVAHVAL)
                 {
-                    DevelopingPOC_1[max_bar] = PriceOfMaxRange; // Starting with the first one.
-                    DevelopingPOC_2[max_bar] = double.NaN; // The second is initialized to an empty value.
+                    double TotalTPOdouble = TotalTPO;
+                    // Calculate amount of TPO's in the Value Area.
+                    int ValueControlTPO = (int)Math.Round(TotalTPOdouble * ValueAreaPercentage_double);
+                    // Start with the TPO's of the Median.
+                    int index = (int)((PriceOfMaxRange - LocalMin) / onetick);
+                    if (index < 0) continue; // Data not yet ready.
+                    int TPOcount = TPOperPrice[index];
+        
+                    // Go through the price levels above and below median adding the biggest to TPO count until the 70% of TPOs are inside the Value Area.
+                    int up_offset = 1;
+                    int down_offset = 1;
+                    while (TPOcount < ValueControlTPO)
+                    {
+                        double abovePrice = PriceOfMaxRange + up_offset * onetick;
+                        double belowPrice = PriceOfMaxRange - down_offset * onetick;
+        
+                        // If belowPrice is out of the session's range then we should add only abovePrice's TPO's, and vice versa.
+                        index = (int)Math.Round((abovePrice - LocalMin) / onetick);
+                        int index2 = (int)Math.Round((belowPrice - LocalMin) / onetick);
+                        if ((belowPrice < LocalMin || TPOperPrice[index] >= TPOperPrice[index2]) && abovePrice <= LocalMax)
+                        {
+                            TPOcount += TPOperPrice[index];
+                            up_offset++;
+                        }
+                        else if (belowPrice >= LocalMin)
+                        {
+                            TPOcount += TPOperPrice[index2];
+                            down_offset++;
+                        }
+                        // Cannot proceed - too few data points.
+                        else if (TPOcount < ValueControlTPO)
+                        {
+                            break;
+                        }
+                    }
+                    DistributeBetweenTwoBuffers(DevelopingVAH_1, DevelopingVAH_2, max_bar, PriceOfMaxRange + up_offset * onetick);
+                    DistributeBetweenTwoBuffers(DevelopingVAL_1, DevelopingVAL_2, max_bar, PriceOfMaxRange - down_offset * onetick + onetick);
                 }
-                // Buffer #1 already had a value,
-                else if (!double.IsNaN(DevelopingPOC_1[max_bar - 1]))
-                {
-                    // and it is different from what we get now.
-                    if (DevelopingPOC_1[max_bar - 1] != PriceOfMaxRange)
-                    {
-                        DevelopingPOC_2[max_bar] = PriceOfMaxRange; // Use new buffer to get an interrupted shift of lines.
-                        DevelopingPOC_1[max_bar] = double.NaN;
-                    }
-                    else // and it is the same price:
-                    {
-                        DevelopingPOC_1[max_bar] = PriceOfMaxRange; // Use the same buffer.
-                        DevelopingPOC_2[max_bar] = double.NaN;
-                    }
-                }
-                // Buffer #2 already had a value,
-                else
-                {
-                    // and it is different from what we get now.
-                    if (DevelopingPOC_2[max_bar - 1] != PriceOfMaxRange)
-                    {
-                        DevelopingPOC_1[max_bar] = PriceOfMaxRange; // Use new buffer to get an interrupted shift of lines.
-                        DevelopingPOC_2[max_bar] = double.NaN;
-                    }
-                    else // and it is the same price:
-                    {
-                        DevelopingPOC_2[max_bar] = PriceOfMaxRange; // Use the same buffer.
-                        DevelopingPOC_1[max_bar] = double.NaN;
-                    }
-                }
+                if (EnableDevelopingPOC) DistributeBetweenTwoBuffers(DevelopingPOC_1, DevelopingPOC_2, max_bar, PriceOfMaxRange);
             }
         }
 
         #endregion
+
+        // Used for Developing POC, VAH, and VAL lines.
+        void DistributeBetweenTwoBuffers(IndicatorDataSeries buff1, IndicatorDataSeries buff2, int bar, double price)
+        {
+            // Both buffer are empty:
+            if (double.IsNaN(buff1[bar - 1]) && double.IsNaN(buff2[bar - 1]))
+            {
+                buff1[bar] = price; // Starting with the first one.
+                buff2[bar] = double.NaN; // The second is initialized to an empty value.
+            }
+            // Buffer #1 already had a value,
+            else if (!double.IsNaN(buff1[bar - 1]))
+            {
+                // and it is different from what we get now.
+                if (buff1[bar - 1] != price)
+                {
+                    buff2[bar] = price; // Use new buffer to get an interrupted shift of lines.
+                    buff1[bar] = double.NaN;
+                }
+                else // and it is the same price:
+                {
+                    buff1[bar] = price; // Use the same buffer.
+                    buff2[bar] = double.NaN;
+                }
+            }
+            // Buffer #2 already had a value,
+            else
+            {
+                // and it is different from what we get now.
+                if (buff2[bar - 1] != price)
+                {
+                    buff1[bar] = price; // Use new buffer to get an interrupted shift of lines.
+                    buff2[bar] = double.NaN;
+                }
+                else // and it is the same price:
+                {
+                    buff2[bar] = price; // Use the same buffer.
+                    buff1[bar] = double.NaN;
+                }
+            }
+        }
 
         #region CheckAlerts
         //+------------------------------------------------------------------+

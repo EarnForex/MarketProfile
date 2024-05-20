@@ -1,11 +1,11 @@
 //+------------------------------------------------------------------+
 //|                                                MarketProfile.mq4 |
-//|                             Copyright © 2010-2023, EarnForex.com |
+//|                             Copyright © 2010-2024, EarnForex.com |
 //|                                       https://www.earnforex.com/ |
 //+------------------------------------------------------------------+
 #property copyright "EarnForex.com"
 #property link      "https://www.earnforex.com/metatrader-indicators/MarketProfile/"
-#property version   "1.22"
+#property version   "1.23"
 #property strict
 
 #property description "Displays the Market Profile indicator for intraday, daily, weekly, or monthly trading sessions."
@@ -19,9 +19,9 @@
 // Rectangle session - a rectangle's name should start with 'MPR' and must not contain an underscore ('_').
 //+------------------------------------------------------------------+
 #property indicator_chart_window
-// Two buffers are used for the Developing POC display because a single buffer wouldn't support an interrupting line.
-#property indicator_plots 2
-#property indicator_buffers 2
+// Two buffers are used for the Developing POC and Developing VAH/VAL display because a single buffer wouldn't support an interrupting line.
+#property indicator_plots 6
+#property indicator_buffers 6
 #property indicator_color1  clrGreen
 #property indicator_color2  clrGreen
 #property indicator_width1  5
@@ -32,6 +32,26 @@
 #property indicator_style2  STYLE_SOLID
 #property indicator_label1  "Developing POC"
 #property indicator_label2  "Developing POC"
+#property indicator_color3  clrGoldenrod
+#property indicator_color4  clrGoldenrod
+#property indicator_width3  5
+#property indicator_width4  5
+#property indicator_type3   DRAW_LINE
+#property indicator_type4   DRAW_LINE
+#property indicator_style3  STYLE_SOLID
+#property indicator_style4  STYLE_SOLID
+#property indicator_label3  "Developing VAH"
+#property indicator_label4  "Developing VAH"
+#property indicator_color5  clrSalmon
+#property indicator_color6  clrSalmon
+#property indicator_width5  5
+#property indicator_width6  5
+#property indicator_type5   DRAW_LINE
+#property indicator_type6   DRAW_LINE
+#property indicator_style5  STYLE_SOLID
+#property indicator_style6  STYLE_SOLID
+#property indicator_label5  "Developing VAL"
+#property indicator_label6  "Developing VAL"
 
 enum color_scheme
 {
@@ -112,8 +132,9 @@ input session_period Session                 = Daily;
 input datetime       StartFromDate           = __DATE__;        // StartFromDate: lower priority.
 input bool           StartFromCurrentSession = true;            // StartFromCurrentSession: higher priority.
 input int            SessionsToCount         = 2;               // SessionsToCount: Number of sessions to count Market Profile.
-input bool           SeamlessScrollingMode   = false;           // SeamlessScrollingMode: show sessions on current screen.
-input bool           EnableDevelopingPOC     = false;           // Enable Developing POC.
+input bool           SeamlessScrollingMode   = false;           // SeamlessScrollingMode: Show sessions on current screen.
+input bool           EnableDevelopingPOC     = false;           // Enable Developing POC
+input bool           EnableDevelopingVAHVAL  = false;           // Enable Developing VAH/VAL
 input int            ValueAreaPercentage     = 70;              // ValueAreaPercentage: Percentage of TPO's inside Value Area.
 
 input group "Colors and looks"
@@ -269,12 +290,13 @@ public:
     CRectangleMP(string);
     ~CRectangleMP(void) {};
     void Process(int);
+    void ResetPrevTime0();
 };
 CRectangleMP* MPR_Array[];
 int mpr_total = 0;
 uint LastRecalculationTime = 0;
 
-double DevelopingPOC_1[], DevelopingPOC_2[]; // Indicator buffers for Developing POC.
+double DevelopingPOC_1[], DevelopingPOC_2[], DevelopingVAH_1[], DevelopingVAH_2[], DevelopingVAL_1[], DevelopingVAL_2[]; // Indicator buffers for Developing POC and VAH/VAL.
 
 //+------------------------------------------------------------------+
 //| Custom indicator initialization function                         |
@@ -410,6 +432,14 @@ int OnInit()
     PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
     SetIndexBuffer(1, DevelopingPOC_2);
     PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+    SetIndexBuffer(2, DevelopingVAH_1);
+    PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+    SetIndexBuffer(3, DevelopingVAH_2);
+    PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+    SetIndexBuffer(4, DevelopingVAL_1);
+    PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+    SetIndexBuffer(5, DevelopingVAL_2);
+    PlotIndexSetDouble(5, PLOT_EMPTY_VALUE, EMPTY_VALUE);
 
     ValueAreaPercentage_double = ValueAreaPercentage * 0.01;
 
@@ -455,13 +485,24 @@ int OnCalculate(const int rates_total,
     }
 
     // New bars arrived?
-    if ((EnableDevelopingPOC) && (rates_total - prev_calculated > 1) && (CleanedUpOn != rates_total))
+    if (((EnableDevelopingPOC) || (EnableDevelopingVAHVAL)) && (rates_total - prev_calculated > 1) && (CleanedUpOn != rates_total))
     {
         // Initialize the indicator buffers.
         for (int i = prev_calculated; i < rates_total; i++)
         {
             DevelopingPOC_1[i] = EMPTY_VALUE;
             DevelopingPOC_2[i] = EMPTY_VALUE;
+            DevelopingVAH_1[i] = EMPTY_VALUE;
+            DevelopingVAH_2[i] = EMPTY_VALUE;
+            DevelopingVAL_1[i] = EMPTY_VALUE;
+            DevelopingVAL_2[i] = EMPTY_VALUE;
+        }
+        if ((prev_calculated == 0) && (Session == Rectangle)) // If prev_calculated got reset for some reason, reset the rectangles.
+        {
+            for (int i = mpr_total - 1; i >= 0 ; i--)
+            {
+                MPR_Array[i].ResetPrevTime0();
+            }
         }
         CleanedUpOn = rates_total; // To prevent cleaning up the buffers again and again when the platform just starts.
     }
@@ -1413,7 +1454,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, C
         }
     }
 
-    if (EnableDevelopingPOC) CalculateDevelopingPOC(sessionstart, sessionend, rectangle); // Developing POC if necessary.
+    if ((EnableDevelopingPOC) || (EnableDevelopingVAHVAL)) CalculateDevelopingPOCVAHVAL(sessionstart, sessionend, rectangle); // Developing POC if necessary.
 
     double TotalTPOdouble = TotalTPO;
     // Calculate amount of TPO's in the Value Area.
@@ -2404,12 +2445,16 @@ void OnTimer()
     {
         ObjectCleanup(); // Delete everything to make sure there are no leftover sessions behind the screen.
         if (Session == Intraday) FirstRunDone = false; // Turn off because FirstRunDone should be false for Intraday sessions to draw properly in the past.
-        if (EnableDevelopingPOC)
+        if ((EnableDevelopingPOC) || (EnableDevelopingVAHVAL))
         {
             for (int i = 0; i < Bars; i++) // Clean indicator buffers.
             {
                 DevelopingPOC_1[i] = EMPTY_VALUE;
                 DevelopingPOC_2[i] = EMPTY_VALUE;
+                DevelopingVAH_1[i] = EMPTY_VALUE;
+                DevelopingVAH_2[i] = EMPTY_VALUE;
+                DevelopingVAL_1[i] = EMPTY_VALUE;
+                DevelopingVAL_2[i] = EMPTY_VALUE;
             }
         }
     }
@@ -2433,7 +2478,7 @@ void CheckRectangles()
         {
             ObjectCleanup(MPR_Array[i].name + "_");
             // Buffer cleanup for the Developing POC.
-            if (EnableDevelopingPOC)
+            if ((EnableDevelopingPOC) || (EnableDevelopingVAHVAL))
             {
                 int sessionstart = iBarShift(Symbol(), Period(), MPR_Array[i].RectangleTimeMin, true);
                 int sessionend = iBarShift(Symbol(), Period(), MPR_Array[i].RectangleTimeMax, true);
@@ -2443,6 +2488,10 @@ void CheckRectangles()
                 {
                     DevelopingPOC_1[j] = EMPTY_VALUE;
                     DevelopingPOC_2[j] = EMPTY_VALUE;
+                    DevelopingVAH_1[j] = EMPTY_VALUE;
+                    DevelopingVAH_2[j] = EMPTY_VALUE;
+                    DevelopingVAL_1[j] = EMPTY_VALUE;
+                    DevelopingVAL_2[j] = EMPTY_VALUE;
                 }
             }
             delete MPR_Array[i];
@@ -2596,7 +2645,7 @@ void CRectangleMP::Process(const int i)
     }
 
     // Buffer cleanup for the Developing POC. Should be run only for a changed rectangle, which isn't brand new.
-    if ((EnableDevelopingPOC) && (rectangle_changed) && (RectangleTimeMax != D'01.01.1970'))
+    if (((EnableDevelopingPOC) || (EnableDevelopingVAHVAL)) && (rectangle_changed) && (RectangleTimeMax != D'01.01.1970'))
     {
         int sessionstart = iBarShift(Symbol(), Period(), RectangleTimeMin, true);
         int sessionend = iBarShift(Symbol(), Period(), RectangleTimeMax, true);
@@ -2606,7 +2655,12 @@ void CRectangleMP::Process(const int i)
         {
             DevelopingPOC_1[j] = EMPTY_VALUE;
             DevelopingPOC_2[j] = EMPTY_VALUE;
+            DevelopingVAH_1[j] = EMPTY_VALUE;
+            DevelopingVAH_2[j] = EMPTY_VALUE;
+            DevelopingVAL_1[j] = EMPTY_VALUE;
+            DevelopingVAL_2[j] = EMPTY_VALUE;
         }
+        prev_Time0 = 0;
     }
 
     RectangleTimeMax = MathMax(t1, t2);
@@ -2717,6 +2771,11 @@ void CRectangleMP::Process(const int i)
     if ((!new_bars_are_not_within_rectangle) || (current_bar_changed_within_boundaries) || (rectangle_changed_and_recalc_is_due) || ((Number != i) && ((RaysUntilIntersection != Stop_No_Rays) && ((ShowMedianRays != None) || (ShowValueAreaRays != None))))) ProcessSession(sessionstart, sessionend, i, &this);
 
     Number = i;
+}
+
+void CRectangleMP::ResetPrevTime0()
+{
+    prev_Time0 = 0;
 }
 
 void PutSinglePrintMark(const double price, const int sessionstart, const string rectangle_prefix)
@@ -2879,13 +2938,13 @@ void RedrawLastSession()
 //+----------------------------------------------------------------------------------+
 //| Go through all prices on all N session bars from 1st to kth bar, where k = 1..N. |
 //+----------------------------------------------------------------------------------+
-void CalculateDevelopingPOC(int sessionstart, int sessionend, CRectangleMP* rectangle = NULL)
+void CalculateDevelopingPOCVAHVAL(int sessionstart, int sessionend, CRectangleMP* rectangle = NULL)
 {
     // Cycle through all possible end bars to calculate the Developing POC.
     for (int max_bar = sessionstart; max_bar >= sessionend; max_bar--)
     {
         if (((DevelopingPOC_1[max_bar] != EMPTY_VALUE) || (DevelopingPOC_2[max_bar] != EMPTY_VALUE)) && (max_bar > 1)) continue; // One of the buffers already filled and it isn't/wasn't the latest bar - skip. Valid only for non-Rectangle sessions.
-    
+
         // Determine the local price minimum and maximum.
         double LocalMin =  Low[ iLowest(Symbol(), Period(), MODE_LOW,  sessionstart - max_bar + 1, max_bar)];
         double LocalMax = High[iHighest(Symbol(), Period(), MODE_HIGH, sessionstart - max_bar + 1, max_bar)];
@@ -2900,7 +2959,15 @@ void CalculateDevelopingPOC(int sessionstart, int sessionend, CRectangleMP* rect
         double DistanceToCenter = DBL_MAX; // Reset the distance because each piece of the Developing POC should be using its own.
         int DevMaxRange = 0; // Maximum range for the Developing POC.
         double PriceOfMaxRange = EMPTY_VALUE;
-        
+
+        // Will be necessary for Developing VAH/VAL calculation.
+        int TotalTPO = 0; // Total amount of dots (TPO's).
+        int TPOperPrice[];
+        // Possible price levels if multiplied to integer.
+        int max = (int)MathRound((LocalMax - LocalMin) / onetick + 2); // + 2 because further we will be possibly checking array at LocalMax + 1.
+        ArrayResize(TPOperPrice, max);
+        ArrayInitialize(TPOperPrice, 0);
+
         // Cycle by price inside the local boundaries:
         for (double price = LocalMax; price >= LocalMin; price -= onetick)
         {
@@ -2920,45 +2987,94 @@ void CalculateDevelopingPOC(int sessionstart, int sessionend, CRectangleMP* rect
                         PriceOfMaxRange = price;
                         DistanceToCenter = MathAbs(price - (LocalMin + (LocalMax - LocalMin) / 2));
                     }
+                    // Remember the number of encountered bars for this price for Developing VAH/VAL.
+                    int index = (int)MathRound((price - LocalMin) / onetick);
+                    TPOperPrice[index]++;
+                    TotalTPO++;
                     range++;
                 }
             }
         }
-        // Both buffer are empty:
-        if ((DevelopingPOC_1[max_bar + 1] == EMPTY_VALUE) && (DevelopingPOC_2[max_bar + 1] == EMPTY_VALUE))
+        if (EnableDevelopingVAHVAL)
         {
-            DevelopingPOC_1[max_bar] = PriceOfMaxRange; // Starting with the first one.
-            DevelopingPOC_2[max_bar] = EMPTY_VALUE; // The second is initialized to an empty value.
+            double TotalTPOdouble = TotalTPO;
+            // Calculate amount of TPO's in the Value Area.
+            int ValueControlTPO = (int)MathRound(TotalTPOdouble * ValueAreaPercentage_double);
+            // Start with the TPO's of the Median.
+            int index = (int)((PriceOfMaxRange - LocalMin) / onetick);
+            if (index < 0) continue; // Data wasn't available yet.
+            int TPOcount = TPOperPrice[index];
+
+            // Go through the price levels above and below median adding the biggest to TPO count until the 70% of TPOs are inside the Value Area.
+            int up_offset = 1;
+            int down_offset = 1;
+            while (TPOcount < ValueControlTPO)
+            {
+                double abovePrice = PriceOfMaxRange + up_offset * onetick;
+                double belowPrice = PriceOfMaxRange - down_offset * onetick;
+                // If belowPrice is out of the session's range then we should add only abovePrice's TPO's, and vice versa.
+                index = (int)MathRound((abovePrice - LocalMin) / onetick);
+                int index2 = (int)MathRound((belowPrice - LocalMin) / onetick);
+                if (((belowPrice < LocalMin) || (TPOperPrice[index] >= TPOperPrice[index2])) && (abovePrice <= LocalMax))
+                {
+                    TPOcount += TPOperPrice[index];
+                    up_offset++;
+                }
+                else if (belowPrice >= LocalMin)
+                {
+                    TPOcount += TPOperPrice[index2];
+                    down_offset++;
+                }
+                // Cannot proceed - too few data points.
+                else if (TPOcount < ValueControlTPO)
+                {
+                    break;
+                }
+            }
+            DistributeBetweenTwoBuffers(DevelopingVAH_1, DevelopingVAH_2, max_bar, PriceOfMaxRange + up_offset * onetick);
+            DistributeBetweenTwoBuffers(DevelopingVAL_1, DevelopingVAL_2, max_bar, PriceOfMaxRange - down_offset * onetick + onetick);
         }
-        // Buffer #1 already had a value,
-        else if (DevelopingPOC_1[max_bar + 1] != EMPTY_VALUE)
+        if (EnableDevelopingPOC) DistributeBetweenTwoBuffers(DevelopingPOC_1, DevelopingPOC_2, max_bar, PriceOfMaxRange);
+    }
+}
+
+// Used for Developing POC, VAH, and VAL lines.
+void DistributeBetweenTwoBuffers(double &buff1[], double &buff2[], int bar, double price)
+{
+    // Both buffer are empty:
+    if ((buff1[bar + 1] == EMPTY_VALUE) && (buff2[bar + 1] == EMPTY_VALUE))
+    {
+        buff1[bar] = price; // Starting with the first one.
+        buff2[bar] = EMPTY_VALUE; // The second is initialized to an empty value.
+    }
+    // Buffer #1 already had a value,
+    else if (buff1[bar + 1] != EMPTY_VALUE)
+    {
+        // and it is different from what we get now.
+        if (buff1[bar + 1] != price)
         {
-            // and it is different from what we get now.
-            if (DevelopingPOC_1[max_bar + 1] != PriceOfMaxRange)
-            {
-                DevelopingPOC_2[max_bar] = PriceOfMaxRange; // Use new buffer to get an interrupted shift of lines.
-                DevelopingPOC_1[max_bar] = EMPTY_VALUE;
-            }    
-            else // and it is the same price:
-            {
-                DevelopingPOC_1[max_bar] = PriceOfMaxRange; // Use the same buffer.
-                DevelopingPOC_2[max_bar] = EMPTY_VALUE;
-            }
+            buff2[bar] = price; // Use new buffer to get an interrupted shift of lines.
+            buff1[bar] = EMPTY_VALUE;
+        }    
+        else // and it is the same price:
+        {
+            buff1[bar] = price; // Use the same buffer.
+            buff2[bar] = EMPTY_VALUE;
         }
-        // Buffer #2 already had a value,
-        else
+    }
+    // Buffer #2 already had a value,
+    else
+    {
+        // and it is different from what we get now.
+        if (buff2[bar + 1] != price)
         {
-            // and it is different from what we get now.
-            if (DevelopingPOC_2[max_bar + 1] != PriceOfMaxRange)
-            {
-                DevelopingPOC_1[max_bar] = PriceOfMaxRange; // Use new buffer to get an interrupted shift of lines.
-                DevelopingPOC_2[max_bar] = EMPTY_VALUE;
-            }
-            else // and it is the same price:
-            {
-                DevelopingPOC_2[max_bar] = PriceOfMaxRange; // Use the same buffer.
-                DevelopingPOC_1[max_bar] = EMPTY_VALUE;
-            }
+            buff1[bar] = price; // Use new buffer to get an interrupted shift of lines.
+            buff2[bar] = EMPTY_VALUE;
+        }
+        else // and it is the same price:
+        {
+            buff2[bar] = price; // Use the same buffer.
+            buff1[bar] = EMPTY_VALUE;
         }
     }
 }
