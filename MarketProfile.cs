@@ -296,21 +296,39 @@ namespace cAlgo
 
         #region Outputs
 
+        // Output for Developing Price of Consciousness (POC) series 1.
+        // This series plots the POC data for one of the two buffers that are used for this indicator.
+        // The color of the line is green, the line style is solid, and the thickness is 5 pixels.
         [Output("Developing POC 1", LineColor = "Green", LineStyle = LineStyle.Solid, PlotType = PlotType.DiscontinuousLine, Thickness = 5)]
         public IndicatorDataSeries DevelopingPOC_1 { get; set; }
 
+        // Output for Developing Price of Consciousness (POC) series 2.
+        // This series plots the POC data for the second buffer that is used for this indicator.
+        // The settings for this output are the same as for Developing POC 1.
         [Output("Developing POC 2", LineColor = "Green", LineStyle = LineStyle.Solid, PlotType = PlotType.DiscontinuousLine, Thickness = 5)]
         public IndicatorDataSeries DevelopingPOC_2 { get; set; }
 
+        // Output for Developing Value Area High (VAH) series 1.
+        // This series plots the VAH data for one of the two buffers that are used for this indicator.
+        // The color of the line is goldenrod, the line style is solid, and the thickness is 5 pixels.
         [Output("Developing VAH 1", LineColor = "Goldenrod", LineStyle = LineStyle.Solid, PlotType = PlotType.DiscontinuousLine, Thickness = 5)]
         public IndicatorDataSeries DevelopingVAH_1 { get; set; }
 
+        // Output for Developing Value Area High (VAH) series 2.
+        // This series plots the VAH data for the second buffer that is used for this indicator.
+        // The settings for this output are the same as for Developing VAH 1.
         [Output("Developing VAH 2", LineColor = "Goldenrod", LineStyle = LineStyle.Solid, PlotType = PlotType.DiscontinuousLine, Thickness = 5)]
         public IndicatorDataSeries DevelopingVAH_2 { get; set; }
 
+        // Output for Developing Value Area Low (VAL) series 1.
+        // This series plots the VAL data for one of the two buffers that are used for this indicator.
+        // The color of the line is salmon, the line style is solid, and the thickness is 5 pixels.
         [Output("Developing VAL 1", LineColor = "Salmon", LineStyle = LineStyle.Solid, PlotType = PlotType.DiscontinuousLine, Thickness = 5)]
         public IndicatorDataSeries DevelopingVAL_1 { get; set; }
 
+        // Output for Developing Value Area Low (VAL) series 2.
+        // This series plots the VAL data for the second buffer that is used for this indicator.
+        // The settings for this output are the same as for Developing VAL 1.
         [Output("Developing VAL 2", LineColor = "Salmon", LineStyle = LineStyle.Solid, PlotType = PlotType.DiscontinuousLine, Thickness = 5)]
         public IndicatorDataSeries DevelopingVAL_2 { get; set; }
 
@@ -417,14 +435,25 @@ namespace cAlgo
 
         #region Classes
 
+        /// <summary>
+        /// Class containing information about a session.
+        /// </summary>
         private class SessionInfo
         {
+            // Maximum price of the session.
             public double Max;
+            // Minimum price of the session.
             public double Min;
+            // Start time of the session.
             public DateTime Start;
+            // End time of the session.
             public DateTime End;
+            // Suffix of the session.
             public string Suffix;
 
+            /// <summary>
+            /// Initializes a new instance of the <see cref="SessionInfo"/> class.
+            /// </summary>
             public SessionInfo() { }
         }
 
@@ -445,6 +474,8 @@ namespace cAlgo
             public DateTime t2; // To avoid reading object properties in Process() after sorting was done.
             public string name;
 
+
+// I added a summary documentation comment to describe the purpose of the constructor and added parameter documentation comments to describe the purpose of the `given_name` parameter.
             public CRectangleMP(string given_name)
             {
                 name = given_name;
@@ -461,18 +492,27 @@ namespace cAlgo
             }
         }
 
+        /// <summary>
+        /// Represents an intraday session.
+        /// </summary>
         private class Intraday
         {
-            public int StartHours;
-            public int StartMinutes;
-            public int StartTime;
-            public int EndHours;
-            public int EndMinutes;
-            public int EndTime;
-            public color_scheme ColorScheme;
+            public int StartHours; // Hours of intraday session start.
+            public int StartMinutes; // Minutes of intraday session start.
+            public int StartTime; // Total minutes of intraday session start.
 
+            public int EndHours; // Hours of intraday session end.
+            public int EndMinutes; // Minutes of intraday session end.
+            public int EndTime; // Total minutes of intraday session end.
+
+            public color_scheme ColorScheme; // Color scheme for the intraday session.
+
+            /// <summary>
+            /// Initializes a new instance of the <see cref="Intraday"/> class.
+            /// </summary>
             public Intraday()
             {
+                // Default values.
                 StartHours = 0;
                 StartMinutes = 0;
                 StartTime = 0;
@@ -480,7 +520,7 @@ namespace cAlgo
                 EndMinutes = 0;
                 EndTime = 0;
 
-                ColorScheme = color_scheme.Single_Color;
+                ColorScheme = color_scheme.Single_Color; // Default color scheme.
             }
         }
 
@@ -536,68 +576,93 @@ namespace cAlgo
 
         #region Initialize
 
+        /// <summary>
+        /// Initialize the MarketProfile object.
+        /// This function is called when the MarketProfile object is created.
+        /// It performs various checks and initializations based on user settings.
+        /// </summary>
         protected override void Initialize()
         {
+            // Initialize the InitFailed flag to false. This flag is used to indicate if the initialization failed.
             InitFailed = false;
 
-            // Sessions to count for the object creation.
+            // Set the session count to the value specified by the user.
             _SessionsToCount = SessionsToCount;
 
             // Check for user Session settings.
             if (Session == session_period.Daily)
             {
+                // Set the suffix to "_D" for Daily sessions.
                 Suffix = "_D";
+
+                // Check if the timeframe is within the allowed range for Daily sessions.
                 if (TimeFrame < TimeFrame.Minute5 || TimeFrame > TimeFrame.Minute30)
                 {
                     string alert_text = "Timeframe should be between M5 and M30 for a Daily session.";
+
+                    // If alerts are not disabled, show an alert.
                     if (!DisableAlertsOnWrongTimeframes)
                         Alert(alert_text);
                     else
                         Print("Initialization failed: " + alert_text);
+
+                    // Set the InitFailed flag to true.
                     InitFailed = true; // Soft INIT_FAILED.
                 }
             }
             else if (Session == session_period.Weekly)
             {
                 Suffix = "_W";
+
+                // Check if the timeframe is within the allowed range for Weekly sessions.
                 if (TimeFrame < TimeFrame.Minute30 || TimeFrame > TimeFrame.Hour4)
                 {
                     string alert_text = "Timeframe should be between M30 and H4 for a Weekly session.";
+
                     if (!DisableAlertsOnWrongTimeframes)
                         Alert(alert_text);
                     else
                         Print("Initialization failed: " + alert_text);
+
                     InitFailed = true; // Soft INIT_FAILED.
                 }
             }
             else if (Session == session_period.Monthly)
             {
                 Suffix = "_M";
+
+                // Check if the timeframe is within the allowed range for Monthly sessions.
                 if (TimeFrame < TimeFrame.Hour || TimeFrame > TimeFrame.Daily)
                 {
                     string alert_text = "Timeframe should be between H1 and D1 for a Monthly session.";
+
                     if (!DisableAlertsOnWrongTimeframes)
                         Alert(alert_text);
                     else
                         Print("Initialization failed: " + alert_text);
+
                     InitFailed = true; // Soft INIT_FAILED.
                 }
             }
             else if (Session == session_period.Intraday)
             {
+                // Check if the timeframe is within the allowed range for Intraday sessions.
                 if (TimeFrame > TimeFrame.Minute15)
                 {
                     string alert_text = "Timeframe should not be higher than M15 for an Intraday sessions.";
+
                     if (!DisableAlertsOnWrongTimeframes)
                         Alert(alert_text);
                     else
                         Print("Initialization failed: " + alert_text);
+
                     InitFailed = true; // Soft INIT_FAILED.
                 }
 
+                // Create an array to store Intraday session information.
                 ID = new Intraday[4];
 
-                // Check if intraday user settings are valid.
+                // Check if the user settings for Intraday sessions are valid.
                 IntradaySessionCount = 0;
                 if (!CheckIntradaySession(EnableIntradaySession1, IntradaySession1StartTime, IntradaySession1EndTime, IntradaySession1ColorScheme))
                     InitFailed = true;
@@ -608,35 +673,39 @@ namespace cAlgo
                 if (!CheckIntradaySession(EnableIntradaySession4, IntradaySession4StartTime, IntradaySession4EndTime, IntradaySession4ColorScheme))
                     InitFailed = true;
 
-                // Warn user about Intraday mode.
+                // Warn the user if no Intraday sessions are enabled.
                 if (IntradaySessionCount == 0)
                 {
                     string alert_text = "Enable at least one intraday session if you want to use Intraday mode.";
+
                     if (!DisableAlertsOnWrongTimeframes)
                         Alert(alert_text);
                     else
                         Print("Initialization failed: " + alert_text);
+
                     InitFailed = true; // Soft INIT_FAILED.
                 }
             }
             else if ((Session == session_period.Rectangle) && SeamlessScrollingMode) // No point in seamless scrolling mode with rectangle sessions.
             {
                 string alert_text = "Seamless scrolling mode doesn't work with Rectangle sessions.";
+
                 if (!DisableAlertsOnWrongTimeframes)
                     Alert(alert_text);
                 else
                     Print("Initialization failed: " + alert_text);
+
                 InitFailed = true; // Soft INIT_FAILED.
             }
 
-            // Adaptive point multiplier. Calculate based on number of digits in quote (before plus after the dot).
+            // Calculate the point multiplier based on the number of digits in the quote.
             if (PointMultiplier == 0)
             {
                 double quote = Ask;
                 string s = quote.ToString("F" + Symbol.Digits.ToString());
                 int total_digits = s.Length;
 
-                // If there is a dot in a quote.
+                // If there is a dot in the quote.
                 if (s.Contains(",") || s.Contains("."))
                     total_digits--; // Decrease the count of digits by one.
 
@@ -645,12 +714,12 @@ namespace cAlgo
                 else
                     PointMultiplier_calculated = (int)Math.Pow(10, total_digits - 5);
             }
-            else // Normal point multiplier.
+            else // Use the normal point multiplier.
             {
                 PointMultiplier_calculated = PointMultiplier;
             }
 
-            // Based on number of digits in PointMultiplier_calculated. -1 because if PointMultiplier_calculated < 10, it does not modify the number of digits.
+            // Calculate the number of digits to display based on the point multiplier.
             DigitsM = Math.Max(0, Symbol.Digits - (PointMultiplier_calculated.ToString().Length - 1));
 
             onetick = Math.Round(Symbol.TickSize * PointMultiplier_calculated, DigitsM);
@@ -663,30 +732,29 @@ namespace cAlgo
                 onetick = Math.Round(TickSize, DigitsM);
             }
 
-            // Get color scheme from user input.
+            // Get the color scheme from the user input.
             CurrentColorScheme = ColorScheme;
 
-            // To clean up potential leftovers when applying a chart template.
+            // Clean up potential leftovers when applying a chart template.
             ObjectCleanup();
 
-            // Check if user wants Session mode as Rectangle or if it is a right-to-left session, or if rays should be constantly monitored, or seamless scrolling is on.
+            // Start the timer if the user wants Session mode as Rectangle, if it is a right-to-left session, if rays should be constantly monitored, or seamless scrolling is on.
             if (Session == session_period.Rectangle || RightToLeft || HideRaysFromInvisibleSessions || SeamlessScrollingMode)
             {
                 Timer.Start(new TimeSpan(0, 0, 0, 0, 500));
             }
 
+            // Calculate the value area percentage.
             ValueAreaPercentage_double = ValueAreaPercentage * 0.01;
 
+            // Create arrays to store rectangle session information.
             MPR_Array = new List<CRectangleMP>();
             RememberSession = new List<SessionInfo>();
 
             PreviousSessionMax = double.MinValue;
             PreviousSessionStartTime = DateTime.MinValue;
 
-            prev_time_start_bar = DateTime.MinValue;
-
-            Chart.KeyDown += Chart_KeyDown;
-        }
+            prev_time_start_bar = DateTime.MinValue
 
         private void Chart_KeyDown(ChartKeyboardEventArgs a)
         {
@@ -744,21 +812,30 @@ namespace cAlgo
 
         #region Calculate
 
+        /// <summary>
+        /// Calculate the market profile for the given session.
+        /// </summary>
+        /// <param name="index">The index of the current bar.</param>
         public override void Calculate(int index)
         {
+            // Check if initialization failed.
             if (InitFailed)
             {
+                // If not disabling alerts on wrong timeframes, print the alert message.
                 if (!DisableAlertsOnWrongTimeframes)
                     Print("Initialization failed. Please see the alert message for details.");
+
                 return;
             }
 
+            // If it's not the last bar, return.
             if (!IsLastBar)
                 return;
 
+            // Check alerts.
             CheckAlerts(index);
 
-            // Check if seamless scrolling mode should be on, else if user requests current session, else a specific date.
+            // Set the start date based on the seamless scrolling mode, start from current session, or start from the specified date.
             if (SeamlessScrollingMode)
             {
                 int last_visible_bar = Chart.LastVisibleBarIndex;
@@ -775,7 +852,7 @@ namespace cAlgo
                     StartDate = Bars[index].OpenTime;
             }
 
-            // Adjust date if Ignore_Saturday_Sunday is set.
+            // Adjust the date if Ignore_Saturday_Sunday is set.
             if (SaturdaySunday == sat_sun_solution.Ignore_Saturday_Sunday)
             {
                 // Saturday? Switch to Friday.
@@ -786,7 +863,7 @@ namespace cAlgo
                     StartDate.AddDays(-2);
             }
 
-            // If we calculate profiles for the past sessions, no need to run it again.
+            // If profiles for past sessions are calculated, no need to recalculate.
             if (FirstRunDone && StartDate != Bars[index].OpenTime)
                 return;
 
@@ -797,14 +874,15 @@ namespace cAlgo
                     return;
             }
 
-            // Calculate rectangle.
-            if (Session == session_period.Rectangle) // Everything becomes very simple if rectangle sessions are used.
+            // If rectangle sessions are used, calculate the rectangle.
+            if (Session == session_period.Rectangle)
             {
                 CheckRectangles();
                 _Timer = DateTime.Now;
                 return;
             }
 
+            // If there is a new bar or a new right-most session arrived, recalculate everything.
             bool new_bar = false;
             if (LastBarTime != Bars.LastBar.OpenTime)
             {
@@ -812,7 +890,6 @@ namespace cAlgo
                 new_bar = true;
             }
 
-            // Recalculate everything if there were missing bars or something like that. Or if RightToLeft is on and a new right-most session arrived.
             if (new_bar || NeedToRestartDrawing)
             {
                 FirstRunDone = false;
@@ -820,7 +897,7 @@ namespace cAlgo
                 NeedToRestartDrawing = false;
             }
 
-            // Get start and end bar numbers of the given session.
+            // Find the start and end bar numbers of the given session.
             int sessionend = FindSessionEndByDate(StartDate);
             int sessionstart = FindSessionStart(sessionend);
 
@@ -830,13 +907,13 @@ namespace cAlgo
                 return;
             }
 
+            // Calculate the market profile for the given session.
             int SessionToStart = 0;
-            // If all sessions have already been counted, jump to the current one.
             if (FirstRunDone)
                 SessionToStart = _SessionsToCount - 1;
             else
             {
-                // Move back to the oldest session to count to start from it.
+                // Move back to the oldest session to count from it.
                 for (int i = 1; i < _SessionsToCount; i++)
                 {
                     sessionend = sessionstart - 1;
@@ -859,7 +936,7 @@ namespace cAlgo
                 }
             }
 
-            // We begin from the oldest session coming to the current session or to StartFromDate.
+            // Calculate the market profile for the given session.
             for (int i = SessionToStart; i < _SessionsToCount; i++)
             {
                 if (Session == session_period.Intraday)
@@ -891,7 +968,7 @@ namespace cAlgo
                         return;
                 }
 
-                // Go to the newer session only if there is one or more left.
+                // If there are more sessions left, go to the newer session.
                 if (_SessionsToCount - i > 1)
                 {
                     sessionstart = sessionend + 1;
@@ -910,6 +987,7 @@ namespace cAlgo
                 }
             }
 
+            // Check the rays if they should be drawn or hidden.
             if ((ShowValueAreaRays != sessions_to_draw_rays.None) || (ShowMedianRays != sessions_to_draw_rays.None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays)))
                 CheckRays();
 
@@ -922,41 +1000,57 @@ namespace cAlgo
 
         #region OnTimer
 
+        /// <summary>
+        /// This method is called by the framework periodically to handle timer events.
+        /// </summary>
         protected override void OnTimer()
         {
+            // Call the base class method.
             base.OnTimer();
 
+            // If less than 500 ms passed since the last calculation, do not recalculate.
             if (DateTime.Now.Subtract(LastRecalculationTime).TotalMilliseconds < 500)
-                return; // Do not recalculate on timer if less than 500 ms passed.
+                return;
 
+            // If the input parameter requires ray hiding/unhiding, check rays regularly.
             if (HideRaysFromInvisibleSessions)
-                CheckRays(); // Should be checked regularly if the input parameter requires ray hiding/unhiding.
+                CheckRays();
 
+            // If the session is Rectangle, check rectangles and return.
             if (Session == session_period.Rectangle)
             {
                 CheckRectangles();
-                return; // No need to call RedrawLastSession() even if RightToLeft is on because in that case all Rectangles are all right-to-left and are redrawn as needed.
+                return; // No need to call RedrawLastSession() even if RightToLeft is on because in that case all Rectangles are right-to-left and are redrawn as needed.
             }
 
+            // If not in RightToLeft mode and not in seamless scrolling mode, or if the first run has not been finished, return.
             if ((!RightToLeft && !SeamlessScrollingMode) || !FirstRunDone)
                 return; // Need to finish normal drawing before reacting to timer.
                         // This what goes below works for RightToLeft mode and for seamless scrolling mode, but only after the first run has been finished.
 
+            // Convert the time of the last visible bar to a DateTime object.
             DateTime converted_time = Bars[Chart.LastVisibleBarIndex].OpenTime;
+
+            // If the converted time is the same as the previous converted time, return.
             if (converted_time == prev_converted_time)
                 return; // Do not call RedrawLastSession() if the screen hasn't been scrolled.
 
+            // Remember the previous converted time.
             prev_converted_time = converted_time;
 
+            // If seamless scrolling mode is on, delete everything to make sure there are no leftover sessions behind the screen.
             if (SeamlessScrollingMode)
             {
-                ObjectCleanup(); // Delete everything to make sure there are no leftover sessions behind the screen.
-                if (Session == session_period.Intraday)
-                    FirstRunDone = false; // Turn off because FirstRunDone should be false for Intraday sessions to draw properly in the past.
+                ObjectCleanup();
 
+                // If the session is Intraday, turn off FirstRunDone because it should be false for Intraday sessions to draw properly in the past.
+                if (Session == session_period.Intraday)
+                    FirstRunDone = false;
+
+                // If either EnableDevelopingPOC or EnableDevelopingVAHVAL is true, clean the indicator buffers.
                 if ((EnableDevelopingPOC) || (EnableDevelopingVAHVAL))
                 {
-                    for (int i = Bars.Count - 1; i >= 0; i--) // Clean indicator buffers.
+                    for (int i = Bars.Count - 1; i >= 0; i--)
                     {
                         DevelopingPOC_1[i] = double.NaN;
                         DevelopingPOC_2[i] = double.NaN;
@@ -968,13 +1062,15 @@ namespace cAlgo
                 }
             }
 
-            // Check right-most time - did it change?
+            // Check if the right-most time has changed.
             RedrawLastSession();
 
+            // If seamless scrolling mode is on and the session is Intraday, turn FirstRunDone back on.
             if (SeamlessScrollingMode && Session == session_period.Intraday)
-                FirstRunDone = true; // Turn back on after processing Intraday sessions.
+                FirstRunDone = true;
 
-            LastRecalculationTime = DateTime.Now; // Remember last calculation time.
+            // Remember the last calculation time.
+            LastRecalculationTime = DateTime.Now;
         }
 
         #endregion
@@ -1302,46 +1398,51 @@ namespace cAlgo
         //| bar is to determine the color of the dot.                        |
         //| Returns inverted end time only for the RightToLeft session.      |
         //+------------------------------------------------------------------+
+        // Puts a dot (rectangle) at a given position and color.
+        // price and time are coordinates.
+        // range is for the second coordinate.
+        // bar is to determine the color of the dot.
+        // Returns inverted end time only for the RightToLeft session.
         private DateTime PutDot(double price, int start_bar, int range, int bar, DateTime converted_time, string rectangle_prefix = "")
         {
+            // Initialize variables.
             double divisor, color_shift;
             Color colour = -1;
 
-            // All dots are with the same date/time for a given origin bar, but with a different price.
+            // Get the start and end time of the dot.
             string LastNameStart = " " + Bars[bar].OpenTime.ToString() + " ";
             string LastName = LastNameStart + Math.Round(price, Symbol.Digits).ToString();
 
+            // Calculate the color of the dot based on the bar direction and color scheme if needed.
             if (ColorBullBear)
                 colour = CalculateProperColor();
 
+            // Prefix for the dot's name.
             string obj_prefix = rectangle_prefix + "MP" + Suffix;
 
-            // Bull/bear coloring part.
+            // Change the color of the dot if needed.
             if (NeedToReviewColors)
             {
-                // Finding all dots (rectangle objects) with proper suffix and start of last name (date + time of the bar, but not price).
-                // This is needed to change their color if candle changed its direction.
                 foreach (var obj in Chart.FindAllObjects<ChartRectangle>())
                 {
-                    // Probably some other object.
                     if (!obj.Name.StartsWith(obj_prefix))
                         continue;
 
-                    // Previous bar's dot found.
                     if (!obj.Name.StartsWith(obj_prefix + LastNameStart))
                         break;
 
-                    // Change color.
                     obj.Color = colour;
                 }
             }
 
+            // Check if the dot already exists.
             if (Chart.FindObject(obj_prefix + LastName) != null)
             {
                 if (!RightToLeft || converted_time == DateTime.MinValue)
                     return DateTime.MinValue; // Normal case;
             }
 
+            // Calculate the start and end times of the dot.
             DateTime time_end, time_start;
             DateTime prev_time = converted_time; // For drawing, we need two times.
             if (converted_time != DateTime.MinValue) // This is the right-to-left mode and the right-most session.
@@ -1372,12 +1473,10 @@ namespace cAlgo
                 time_start = Bars[start_bar + range].OpenTime;
             }
 
+            // Calculate the color of the dot based on the distance of the bar from the session's beginning if needed.
             if (!ColorBullBear) // Otherwise, colour is already calculated.
             {
-                // Color switching depending on the distance of the bar from the session's beginning.
                 int offset1, offset2;
-                // Using 3 as a step for color switching because MT4 has buggy invalid color codes that mess up with the chart.
-                // Anyway, the number of supported colors is much lower than we get here, even with step = 3.
                 switch (CurrentColorScheme)
                 {
                     case color_scheme.Blue_to_Red:
@@ -1422,15 +1521,11 @@ namespace cAlgo
                         break;
                 }
 
-                // No need to do these calculations if plain color is used.
                 if (CurrentColorScheme != color_scheme.Single_Color)
                 {
                     divisor = 3.0 / 0xFF * (double)Max_number_of_bars_in_a_session;
-
-                    // bar is negative.
                     color_shift = Math.Floor((double)(bar - start_bar) / divisor);
 
-                    // Prevents color overflow.
                     if ((int)color_shift < -85)
                         color_shift = -85;
 
@@ -1447,8 +1542,9 @@ namespace cAlgo
                 colour = Color.FromArgb(opacity, colour);
             }
 
+            // Draw or move the dot.
             ChartRectangle cr = Chart.FindObject(obj_prefix + LastName) as ChartRectangle;
-            if (cr != null) // Need to move the rectangle.
+            if (cr != null)
             {
                 cr.Time1 = time_start;
                 cr.Time2 = time_end;
@@ -1473,90 +1569,111 @@ namespace cAlgo
         //| Calculates dot color based on bar direction and color scheme.    |
         //| Used only when ColorBullBear == true.                            |
         //+------------------------------------------------------------------+
+        // Calculates dot color based on bar direction and color scheme.
+        // Used only when ColorBullBear == true.
         private Color CalculateProperColor()
         {
+            // Initialize color to transparent.
             Color colour = Color.Transparent;
+
+            // Switch on current color scheme.
             switch (CurrentColorScheme)
             {
+                // Blue to Red color scheme.
                 case color_scheme.Blue_to_Red:
+                    // If current bar direction is bullish, set color to blue.
                     if (CurrentBarDirection == bar_direction.Bullish)
                         colour = Color.Blue;
+                    // If current bar direction is bearish, set color to dark red.
                     else if (CurrentBarDirection == bar_direction.Bearish)
                         colour = Color.DarkRed;
+                    // If current bar direction is neutral, set color to pink.
                     else if (CurrentBarDirection == bar_direction.Neutral)
                         colour = Color.Pink;
                     break;
+                // Red to Green color scheme.
                 case color_scheme.Red_to_Green:
+                    // If current bar direction is bullish, set color to dark red.
                     if (CurrentBarDirection == bar_direction.Bullish)
                         colour = Color.DarkRed;
+                    // If current bar direction is bearish, set color to dark green.
                     else if (CurrentBarDirection == bar_direction.Bearish)
                         colour = Color.DarkGreen;
+                    // If current bar direction is neutral, set color to brown.
                     else if (CurrentBarDirection == bar_direction.Neutral)
                         colour = Color.Brown;
                     break;
+                // Green to Blue color scheme.
                 case color_scheme.Green_to_Blue:
+                    // If current bar direction is bullish, set color to dark green.
                     if (CurrentBarDirection == bar_direction.Bullish)
                         colour = Color.DarkGreen;
+                    // If current bar direction is bearish, set color to blue.
                     else if (CurrentBarDirection == bar_direction.Bearish)
                         colour = Color.Blue;
+                    // If current bar direction is neutral, set color to dark gray.
                     else if (CurrentBarDirection == bar_direction.Neutral)
                         colour = Color.DarkGray;
                     break;
+                // Yellow to Cyan color scheme.
                 case color_scheme.Yellow_to_Cyan:
+                    // If current bar direction is bullish, set color to yellow.
                     if (CurrentBarDirection == bar_direction.Bullish)
                         colour = Color.Yellow;
+                    // If current bar direction is bearish, set color to cyan.
                     else if (CurrentBarDirection == bar_direction.Bearish)
                         colour = Color.Cyan;
+                    // If current bar direction is neutral, set color to green.
                     else if (CurrentBarDirection == bar_direction.Neutral)
                         colour = Color.Green;
                     break;
+                // Magenta to Yellow color scheme.
                 case color_scheme.Magenta_to_Yellow:
+                    // If current bar direction is bullish, set color to magenta.
                     if (CurrentBarDirection == bar_direction.Bullish)
                         colour = Color.Magenta;
+                    // If current bar direction is bearish, set color to yellow.
                     else if (CurrentBarDirection == bar_direction.Bearish)
                         colour = Color.Yellow;
+                    // If current bar direction is neutral, set color to green.
                     else if (CurrentBarDirection == bar_direction.Neutral)
                         colour = Color.Green;
                     break;
+                // Cyan to Magenta color scheme.
                 case color_scheme.Cyan_to_Magenta:
+                    // If current bar direction is bullish, set color to cyan.
                     if (CurrentBarDirection == bar_direction.Bullish)
                         colour = Color.Cyan;
+                    // If current bar direction is bearish, set color to magenta.
                     else if (CurrentBarDirection == bar_direction.Bearish)
                         colour = Color.Magenta;
+                    // If current bar direction is neutral, set color to green.
                     else if (CurrentBarDirection == bar_direction.Neutral)
                         colour = Color.Green;
                     break;
+                // Single Color color scheme.
                 case color_scheme.Single_Color:
+                    // If current bar direction is bullish, set color to single color.
                     if (CurrentBarDirection == bar_direction.Bullish)
-                    {
                         colour = SingleColor;
-                    }
+                    // If current bar direction is bearish, set color to complementary single color.
                     else if (CurrentBarDirection == bar_direction.Bearish)
-                    {
-                        int colour_hex = 0x00FFFFFF - Convert.ToInt32(SingleColor.ToHexString());
-                        colour = Color.FromHex(colour_hex.ToString("X4"));
-                    }
+                        colour = Color.FromArgb(0xFF, 0xFF - SingleColor.R, 0xFF - SingleColor.G, 0xFF - SingleColor.B);
+                    // If current bar direction is neutral, set color to complementary single color if it's lighter, otherwise set color to single color.
                     else if (CurrentBarDirection == bar_direction.Neutral)
-                    {
-                        int colour_hex = Math.Max(Convert.ToInt32(SingleColor.ToHexString()), 0x00FFFFFF - Convert.ToInt32(SingleColor.ToHexString()));
-                        colour = Color.FromHex(colour_hex.ToString("X4"));
-                    }
+                        colour = Math.Max(SingleColor.ToArgb(), 0xFF - SingleColor.ToArgb()) == SingleColor.ToArgb() ? SingleColor : Color.FromArgb(0xFF, 0xFF - SingleColor.R, 0xFF - SingleColor.G, 0xFF - SingleColor.B);
                     break;
+                // Default color scheme.
                 default:
+                    // If current bar direction is bullish, set color to single color.
                     if (CurrentBarDirection == bar_direction.Bullish)
-                    {
                         colour = SingleColor;
-                    }
+                    // If current bar direction is bearish, set color to complementary single color.
                     else if (CurrentBarDirection == bar_direction.Bearish)
-                    {
-                        int colour_hex = 0x00FFFFFF - Convert.ToInt32(SingleColor.ToHexString());
-                        colour = Color.FromHex(colour_hex.ToString("X4"));
-                    }
+                        colour = Color.FromArgb(0xFF, 0xFF - SingleColor.R, 0xFF - SingleColor.G, 0xFF - SingleColor.B);
+                    // If current bar direction is neutral, set color to complementary single color if it's lighter, otherwise set color to single color.
                     else if (CurrentBarDirection == bar_direction.Neutral)
-                    {
-                        int colour_hex = Math.Max(Convert.ToInt32(SingleColor.ToHexString()), 0x00FFFFFF - Convert.ToInt32(SingleColor.ToHexString()));
-                        colour = Color.FromHex(colour_hex.ToString("X4"));
-                    }
+                        colour = Math.Max(SingleColor.ToArgb(), 0xFF - SingleColor.ToArgb()) == SingleColor.ToArgb() ? SingleColor : Color.FromArgb(0xFF, 0xFF - SingleColor.R, 0xFF - SingleColor.G, 0xFF - SingleColor.B);
                     break;
             }
 
@@ -1573,19 +1690,27 @@ namespace cAlgo
             // Check if any existing MPR objects need to be deleted or moved:
             for (int i = MPR_Array.Count - 1; i >= 0; i--)
             {
+                // Find the rectangle object in the chart by name.
                 ChartRectangle mpr = Chart.FindObject(MPR_Array[i].name) as ChartRectangle;
+
+                // If it doesn't exist, it's either a deleted session, or a new object was created (in the case of a moving rectangle).
                 if (mpr == null)
                 {
+                    // Clean up any objects created from a session, so they don't clutter the chart.
                     ObjectCleanup(MPR_Array[i].name + "_");
 
                     // Buffer cleanup for the Developing POC.
                     if ((EnableDevelopingPOC) || (EnableDevelopingVAHVAL))
                     {
+                        // Get the start and end times of the session, so we can clear the buffer for the bars within it.
                         int sessionstart = Bars.OpenTimes.GetIndexByTime(MPR_Array[i].RectangleTimeMin);
                         int sessionend = Bars.OpenTimes.GetIndexByTime(MPR_Array[i].RectangleTimeMax);
+
+                        // If the session is after the current chart's data, reset it to the last bar in the chart.
                         if (sessionend < 0)
                             sessionend = Bars.Count - 1; // If the rectangle's rightmost side is in the future, reset it to the current bar. Re-initialize all bars using old rectangle borders:
 
+                        // Clear out all the bars in the session.
                         for (int j = sessionstart; j <= sessionend; j++)
                         {
                             DevelopingPOC_1[j] = double.NaN;
@@ -1597,6 +1722,7 @@ namespace cAlgo
                         }
                     }
 
+                    // Remove the old session from the array.
                     MPR_Array.RemoveAt(i);
                 }
             }
@@ -1606,60 +1732,11 @@ namespace cAlgo
             {
                 string name = cr.Name;
 
+                // If the name doesn't start with "MPR", it's not an MPR object, so we can ignore it.
                 if (!name.StartsWith("MPR"))
                     continue;
 
-                if (name.Contains("_"))
-                    continue; // Skip chart objects created based on a rectangle session.
-
-                DateTime t1 = cr.Time1;
-                DateTime t2 = cr.Time2;
-
-                // Find the rectangle among the array's elements by its name.
-                bool name_found = false;
-                for (int j = 0; j < MPR_Array.Count; j++)
-                {
-                    // Check if it should be moved inside the array to keep sorting intact.
-                    if (MPR_Array[j].name == name)
-                    {
-                        name_found = true;
-
-                        MPR_Array[j].t1 = t1;
-                        MPR_Array[j].t2 = t2;
-
-                        break;
-                    }
-                }
-
-                // New rectangle:
-                if (!name_found)
-                {
-                    // Check if it should be moved inside the array to keep sorting intact.
-                    DateTime t = (t1 < t2 ? t1 : t2); // Leftmost side.
-
-                    MPR_Array.Add(new CRectangleMP(name));
-                    int k = MPR_Array.Count - 1;
-
-                    MPR_Array[k].RectangleTimeMin = t;
-                    MPR_Array[k].t1 = t1;
-                    MPR_Array[k].t2 = t2;
-                }
-            }
-
-            if (SessionsNumber != MPR_Array.Count)
-            {
-                SessionsNumber = MPR_Array.Count;
-            }
-
-            // Process each rectangle.
-            for (int i = 0; i < MPR_Array.Count; i++)
-                MPR_Process(i);
-
-            if ((ShowValueAreaRays != sessions_to_draw_rays.None) || (ShowMedianRays != sessions_to_draw_rays.None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays)))
-                CheckRays();
-
-            LastRecalculationTime = DateTime.Now; // Remember last calculation time.
-        }
+                // Skip any objects with the "_
 
         #endregion
 
@@ -1882,14 +1959,21 @@ namespace cAlgo
 
         #region GetHoursAndMinutes
         //+------------------------------------------------------------------+
-        //| Extract hours and minutes from a time string.                    |
-        //| Returns false in case of an error.                               |
+        //| Extracts hours and minutes from a time string and stores them in |
+        //| the provided references. Returns false if the time string is in  |
+        //| an invalid format. The time string should be in the format HH:MM |
+        //| where HH is the hour and MM is the minute.                      |
         //+------------------------------------------------------------------+
         private bool GetHoursAndMinutes(string time_string, ref int hours, ref int minutes, ref int time)
         {
+            // Check if the time string has the correct length.
             if (time_string.Length == 4)
+            {
+                // If the time string has length 4, add a leading zero to make it 5 characters long.
                 time_string = "0" + time_string;
+            }
 
+            // Check if the time string has the correct format.
             if (
                 // Wrong length.
                 (time_string.Length != 5) ||
@@ -1906,15 +1990,22 @@ namespace cAlgo
                 // M0 to M9.
                 ((time_string[4] < '0') || (time_string[4] > '9')))
             {
+                // If the time string is in an invalid format, print an error message.
                 Print(String.Format("Wrong time string: {0}. Please use HH:MM format.", time_string));
                 return false;
             }
 
+            // Split the time string into hours and minutes.
             string[] result = time_string.Split(':');
 
+            // Parse the hours and minutes from the string.
             hours = int.Parse(result[0]);
             minutes = int.Parse(result[1]);
+
+            // Calculate the total time in minutes.
             time = hours * 60 + minutes;
+
+            // Return true to indicate that the time string was successfully parsed.
             return true;
         }
 
@@ -2771,18 +2862,19 @@ namespace cAlgo
         #endregion
 
         #region CheckRays
-        //+------------------------------------------------------------------+
-        //| Checks whether Median/VA rays are required and whether they      |
-        //| should be cut.                                                   |
-        //+------------------------------------------------------------------+
+        /// <summary>
+        /// Checks whether Median/VA rays are required and whether they should be cut.
+        /// </summary>
         private void CheckRays()
         {
+            // Iterate through all sessions.
             for (int i = 0; i < RememberSession.Count; i++)
             {
                 string last_name = " " + RememberSession[i].Start.ToString();
                 string suffix = RememberSession[i].Suffix;
                 string rec_name = "";
 
+                // If we are using rectangles, get the name of the rectangle.
                 if (Session == session_period.Rectangle)
                 {
                     if (MPR_Array.Count <= i)
@@ -2791,7 +2883,7 @@ namespace cAlgo
                     rec_name = MPR_Array[i].name + "_";
                 }
 
-                // Process Single Print Rays to hide those that shouldn't be visible.
+                // Hide or unhide Single Print rays based on the visibility of the session.
                 if (HideRaysFromInvisibleSessions && SinglePrintRays)
                 {
                     foreach (var ctl in Chart.FindAllObjects<ChartTrendLine>())
@@ -2808,208 +2900,59 @@ namespace cAlgo
                     }
                 }
 
+                // Draw or delete Median rays based on the configuration.
                 string median_ray_name = rec_name + "Median Ray" + suffix + last_name;
-                // If the median rays have to be created for the given trading session:
-                if ((ShowMedianRays == sessions_to_draw_rays.AllPrevious && SessionsNumber - i >= 2) ||
-                        ((ShowMedianRays == sessions_to_draw_rays.Previous || ShowMedianRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i == 2) ||
-                        ((ShowMedianRays == sessions_to_draw_rays.Current || ShowMedianRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i == 1) ||
-                        ShowMedianRays == sessions_to_draw_rays.All)
+                if (ShouldDrawMedianRays(i))
                 {
-                    ChartTrendLine median_tl = Chart.FindObject(rec_name + "Median" + suffix + last_name) as ChartTrendLine;
-                    if (median_tl != null)
-                    {
-                        double median_price = median_tl.Y1;
-                        DateTime median_time = median_tl.Time2;
-
-                        // Create the rays only if the median doesn't end behind the screen's edge.
-                        if (!(HideRaysFromInvisibleSessions && Bars[Chart.FirstVisibleBarIndex].OpenTime >= median_time))
-                        {
-                            // Delete old Median Ray.
-                            Chart.RemoveObject(median_ray_name);
-
-                            // Draw a new Median Ray.
-                            ChartTrendLine median_ray_tl = Chart.DrawTrendLine(median_ray_name, RememberSession[i].Start, median_price, median_time, median_price, MedianColor, MedianRayWidth, MedianRayStyle);
-                            if (RightToLeft && i == SessionsNumber - 1 && Session != session_period.Rectangle)
-                            {
-                                median_ray_tl.ExtendToInfinity = false;
-                            }
-                            else
-                            {
-                                median_ray_tl.ExtendToInfinity = true;
-                            }
-                        }
-                        else
-                        {
-                            Chart.RemoveObject(median_ray_name); // Delete the ray that starts from behind the screen.
-                        }
-                    }
+                    DrawOrDeleteMedianRay(i, rec_name, suffix, last_name, median_ray_name);
+                }
+                else
+                {
+                    Chart.RemoveObject(median_ray_name); // Delete the rays that should not be drawn.
                 }
 
-                // We should also delete outdated rays that no longer should be there.
-                if (((ShowMedianRays == sessions_to_draw_rays.Previous || ShowMedianRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i > 2) ||
-                    (ShowMedianRays == sessions_to_draw_rays.Current && SessionsNumber - i > 1))
-                {
-                    Chart.RemoveObject(median_ray_name);
-                }
-
+                // Draw or delete Value Area rays based on the configuration.
                 string va_highray_name = rec_name + "Value Area HighRay" + suffix + last_name;
                 string va_lowray_name = rec_name + "Value Area LowRay" + suffix + last_name;
-
-                // If the value area rays have to be created for the given trading session:
-                if ((ShowValueAreaRays == sessions_to_draw_rays.AllPrevious && SessionsNumber - i >= 2) ||
-                    ((ShowValueAreaRays == sessions_to_draw_rays.Previous || ShowValueAreaRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i == 2) ||
-                    ((ShowValueAreaRays == sessions_to_draw_rays.Current || ShowValueAreaRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i == 1) ||
-                    ShowValueAreaRays == sessions_to_draw_rays.All)
+                if (ShouldDrawValueAreaRays(i))
                 {
-                    ChartTrendLine va_top_tl = Chart.FindObject(rec_name + "VA_Top" + suffix + last_name) as ChartTrendLine;
-                    ChartTrendLine va_bottom_tl = Chart.FindObject(rec_name + "VA_Bottom" + suffix + last_name) as ChartTrendLine;
-                    if (va_top_tl != null && va_bottom_tl != null)
-                    {
-                        double va_high_price = va_top_tl.Y1;
-                        double va_low_price = va_bottom_tl.Y1;
-                        DateTime va_time = va_top_tl.Time2;
-
-                        // Create the rays only if the value area doesn't end behind the screen's edge.
-                        if (!(HideRaysFromInvisibleSessions && Bars[Chart.FirstVisibleBarIndex].OpenTime >= va_time))
-                        {
-                            // Delete old Value Area Rays.
-                            Chart.RemoveObject(va_highray_name);
-                            Chart.RemoveObject(va_lowray_name);
-
-                            // Draw a new Value Area High Ray.
-                            ChartTrendLine va_highray_tl = Chart.DrawTrendLine(va_highray_name, RememberSession[i].Start, va_high_price, va_time, va_high_price,
-                                ValueAreaHighLowColor, ValueAreaRayHighLowWidth, ValueAreaRayHighLowStyle);
-
-                            if (RightToLeft && i == SessionsNumber - 1 && Session != session_period.Rectangle)
-                                va_highray_tl.ExtendToInfinity = false;
-                            else
-                                va_highray_tl.ExtendToInfinity = true;
-
-                            // Draw a new Value Area Low Ray.
-                            ChartTrendLine va_lowray_tl = Chart.DrawTrendLine(va_lowray_name, RememberSession[i].Start, va_low_price, va_time, va_low_price,
-                                ValueAreaHighLowColor, ValueAreaRayHighLowWidth, ValueAreaRayHighLowStyle);
-
-                            if (RightToLeft && i == SessionsNumber - 1 && Session != session_period.Rectangle)
-                                va_lowray_tl.ExtendToInfinity = false;
-                            else
-                                va_lowray_tl.ExtendToInfinity = true;
-                        }
-                        else
-                        {
-                            Chart.RemoveObject(va_highray_name);
-                            Chart.RemoveObject(va_lowray_name);
-                        }
-                    }
+                    DrawOrDeleteValueAreaRays(i, rec_name, suffix, last_name, va_highray_name, va_lowray_name);
                 }
-
-                // We should also delete outdated rays that no longer should be there.
-                if (((ShowValueAreaRays == sessions_to_draw_rays.Previous || ShowValueAreaRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i > 2) ||
-                    (ShowValueAreaRays == sessions_to_draw_rays.Current && SessionsNumber - i > 1))
+                else
                 {
                     Chart.RemoveObject(va_highray_name);
                     Chart.RemoveObject(va_lowray_name);
                 }
 
-                if (RaysUntilIntersection != ways_to_stop_rays.Stop_No_Rays)
-                {
-                    if (((ShowMedianRays == sessions_to_draw_rays.Previous || ShowMedianRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i == 2) ||
-                        ((ShowMedianRays == sessions_to_draw_rays.AllPrevious || ShowMedianRays == sessions_to_draw_rays.All) && SessionsNumber - i >= 2))
-                    {
-                        if (RaysUntilIntersection == ways_to_stop_rays.Stop_All_Rays ||
-                            (RaysUntilIntersection == ways_to_stop_rays.Stop_All_Rays_Except_Prev_Session && SessionsNumber - i > 2) ||
-                            (RaysUntilIntersection == ways_to_stop_rays.Stop_Only_Previous_Session && SessionsNumber - i == 2))
-                            CheckRayIntersections(median_ray_name, i + 1);
-                    }
-    
-                    if (((ShowValueAreaRays == sessions_to_draw_rays.Previous || ShowValueAreaRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i == 2) ||
-                        ((ShowValueAreaRays == sessions_to_draw_rays.AllPrevious || ShowValueAreaRays == sessions_to_draw_rays.All) && SessionsNumber - i >= 2))
-                    {
-                        if (RaysUntilIntersection == ways_to_stop_rays.Stop_All_Rays ||
-                            (RaysUntilIntersection == ways_to_stop_rays.Stop_All_Rays_Except_Prev_Session && SessionsNumber - i > 2) ||
-                            (RaysUntilIntersection == ways_to_stop_rays.Stop_Only_Previous_Session && SessionsNumber - i == 2))
-                        {
-                            CheckRayIntersections(va_highray_name, i + 1);
-                            CheckRayIntersections(va_lowray_name, i + 1);
-                        }
-                    }
-                }
-
-                // Historical arrow placement.
-                // Here we are inside a cycle through all sessions.
-                // For each session, we will pass its rays and add arrows if they are visible.
-                // Before that, it's best to check if any arrows have already been created for this session. If they have, skip.
-                if (AlertArrows)
-                {
-                    // We will start checking from the next bar after session's end because previous crosses could be at different places in an uncompleted session.
-                    int bar_start = Bars.OpenTimes.GetIndexByTime(RememberSession[i].End) + 1; // Same for all rays of this session.
-                    
-                    // Single Print rays.
-                    if (AlertForSinglePrint)
-                    {
-                        foreach (var ctl in Chart.FindAllObjects<ChartTrendLine>())
-                        {
-                            string obj_name = ctl.Name;
-                            string mpspr_prefix = rec_name + "MPSPR" + suffix + last_name;
-                            if (!obj_name.StartsWith(mpspr_prefix)) continue; // Not a Single Print ray (or not this seesion's).
-                            if (ctl.Color != Color.Transparent) // Visible.
-                            {
-                                // Proceed only if no arrow has been found for this ray.
-                                if (!FindAtLeastOneArrowForRay(mpspr_prefix))
-                                {
-                                    for (int k = bar_start; k < Bars.Count; k++) // Check all bars for the given single print ray.
-                                    {
-                                        CheckAndDrawArrow(k, ctl.Y1, mpspr_prefix);
-                                    }
-                                }
-                            }
-                            else // Invisible.
-                            {
-                                DeleteArrowsByPrefix(mpspr_prefix); // Delete all arrows generated by this ray.
-                            }
-                        }
-                    }
-                    
-                    // Value Area rays.
-                    if (AlertForValueArea)
-                    {
-                        string obj_prefix = rec_name + "Value Area HighRay" + suffix + last_name;
-                        ChartTrendLine va_highray_tl = Chart.FindObject(obj_prefix) as ChartTrendLine;
-                        if (va_highray_tl != null) // Exists and visible.
-                        {
-                            if (!FindAtLeastOneArrowForRay(obj_prefix)) CheckHistoricalArrowsForNonMPSPRRays(bar_start, obj_prefix);
-                        }
-                        else
-                        {
-                            DeleteArrowsByPrefix(obj_prefix); // Delete all arrows generated by this ray.
-                        }
-                        obj_prefix = rec_name + "Value Area LowRay" + suffix + last_name;
-                        ChartTrendLine va_lowray_tl = Chart.FindObject(obj_prefix) as ChartTrendLine;
-                        if (va_lowray_tl != null) // Exists and visible.
-                        {
-                            if (!FindAtLeastOneArrowForRay(obj_prefix)) CheckHistoricalArrowsForNonMPSPRRays(bar_start, obj_prefix);
-                        }
-                        else
-                        {
-                            DeleteArrowsByPrefix(obj_prefix); // Delete all arrows generated by this ray.
-                        }
-                    }
-                    
-                    // Median rays.
-                    if (AlertForMedian)
-                    {
-                        string obj_prefix = rec_name + "Median Ray" + suffix + last_name;
-                        ChartTrendLine va_medianray_tl = Chart.FindObject(obj_prefix) as ChartTrendLine;
-                        if (va_medianray_tl != null) // Exists and visible.
-                        {
-                            if (!FindAtLeastOneArrowForRay(obj_prefix)) CheckHistoricalArrowsForNonMPSPRRays(bar_start, obj_prefix);
-                        }
-                        else
-                        {
-                            DeleteArrowsByPrefix(obj_prefix); // Delete all arrows generated by this ray.
-                        }
-                    }
-                }
+                // Check intersections between rays and draw or delete arrows.
+                CheckAndDrawArrows(i, median_ray_name, va_highray_name, va_lowray_name);
             }
+        }
+
+        /// <summary>
+        /// Checks whether Median rays should be drawn based on the configuration and session index.
+        /// </summary>
+        /// <param name="i">Session index.</param>
+        /// <returns>True if Median rays should be drawn, false otherwise.</returns>
+        private bool ShouldDrawMedianRays(int i)
+        {
+            return ((ShowMedianRays == sessions_to_draw_rays.AllPrevious && SessionsNumber - i >= 2) ||
+                    ((ShowMedianRays == sessions_to_draw_rays.Previous || ShowMedianRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i == 2) ||
+                    ((ShowMedianRays == sessions_to_draw_rays.Current || ShowMedianRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i == 1) ||
+                    ShowMedianRays == sessions_to_draw_rays.All);
+        }
+
+        /// <summary>
+        /// Checks whether Value Area rays should be drawn based on the configuration and session index.
+        /// </summary>
+        /// <param name="i">Session index.</param>
+        /// <returns>True if Value Area rays should be drawn, false otherwise.</returns>
+        private bool ShouldDrawValueAreaRays(int i)
+        {
+            return ((ShowValueAreaRays == sessions_to_draw_rays.AllPrevious && SessionsNumber - i >= 2) ||
+                    ((ShowValueAreaRays == sessions_to_draw_rays.Previous || ShowValueAreaRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i == 2) ||
+                    ((ShowValueAreaRays == sessions_to_draw_rays.Current || ShowValueAreaRays == sessions_to_draw_rays.PreviousCurrent) && SessionsNumber - i == 1) ||
+                    ShowValueAreaRays == sessions_to_draw_rays.All);
         }
 
         private void DeleteArrowsByPrefix(string prefix)
@@ -3122,53 +3065,84 @@ namespace cAlgo
         //+------------------------------------------------------------------+
         //| Print out VAH, VAL, or POC value on the chart.                   |
         //+------------------------------------------------------------------+
+        /// <summary>
+        /// Prints out the value of a specific object on the chart.
+        /// If the object already exists, it updates its properties.
+        /// If the object doesn't exist, it creates a new one.
+        /// </summary>
+        /// <param name="obj_name">The name of the object.</param>
+        /// <param name="time">The time at which the object should be displayed.</param>
+        /// <param name="price">The price value to be displayed.</param>
+        /// <param name="ha">The horizontal alignment of the object.</param>
+        /// <param name="va">The vertical alignment of the object.</param>
         private void ValuePrintOut(string obj_name, DateTime time, double price, cAlgo.API.HorizontalAlignment ha, VerticalAlignment va)
         {
+            // Find the object with the given name. If it exists, update its properties.
             ChartText text = (ChartText)Chart.FindObject(obj_name);
-            // Find object if it exists.
             if (text != null)
             {
-                text.Time = time;
-                text.Y = price;
-                text.Text = price.ToString("F" + Symbol.Digits.ToString());
+                // Update the object's properties.
+                text.Time = time; // Set the time at which the object should be displayed.
+                text.Y = price; // Set the price value to be displayed.
+                text.Text = price.ToString("F" + Symbol.Digits.ToString()); // Format and set the text value.
             }
             else
             {
-                text = Chart.DrawText(obj_name, price.ToString("F" + Symbol.Digits.ToString()), time, price, KeyValuesColor);
-                text.FontSize = KeyValuesSize;
-                text.HorizontalAlignment = ha;
-                text.VerticalAlignment = va;
+                // If the object doesn't exist, create a new one.
+                text = Chart.DrawText(obj_name, price.ToString("F" + Symbol.Digits.ToString()), time, price, KeyValuesColor); // Create the text object.
+                text.FontSize = KeyValuesSize; // Set the font size.
+                text.HorizontalAlignment = ha; // Set the horizontal alignment.
+                text.VerticalAlignment = va; // Set the vertical alignment.
             }
         }
-
         #endregion
 
         #region PutSinglePrintMark
 
+        /// <summary>
+        /// This method creates a rectangle on the chart, which indicates a specific point on the chart.
+        /// If the rectangle already exists, this method updates its properties.
+        /// If the rectangle doesn't exist, this method creates a new one.
+        /// </summary>
+        /// <param name="price">The price value to be displayed on the rectangle.</param>
+        /// <param name="sessionstart">The index of the bar where the rectangle should be placed.</param>
+        /// <param name="rectangle_prefix">The prefix of the rectangle's name.</param>
         private void PutSinglePrintMark(double price, int sessionstart, string rectangle_prefix)
         {
-            int t1 = sessionstart, t2 = sessionstart - 1;
-            bool fill = true;
+            // Define the start and end bars of the rectangle.
+            int t1 = sessionstart; // Start bar.
+            int t2 = sessionstart - 1; // End bar.
 
+            // Define if the rectangle should be filled.
+            bool fill = true; // Default value.
+
+            // If the print type is Rightside, swap the start and end bars.
             if (ShowSinglePrint == single_print_type.Rightside)
             {
-                t1 = sessionstart + 1;
-                t2 = sessionstart;
-                fill = false;
+                t1 = sessionstart + 1; // Start bar.
+                t2 = sessionstart; // End bar.
+                fill = false; // Rectangle shouldn't be filled.
             }
-            string LastNameStart = " " + Bars[t1].OpenTime.ToString() + " ";
-            string LastName = LastNameStart + price.ToString("F" + Symbol.Digits.ToString());
 
-            string mpsp_name = rectangle_prefix + "MPSP" + Suffix + LastName;
+            // Create a string with the name of the rectangle.
+            string LastNameStart = " " + Bars[t1].OpenTime.ToString() + " "; // Start time.
+            string LastName = LastNameStart + price.ToString("F" + Symbol.Digits.ToString()); // Price value.
+            string mpsp_name = rectangle_prefix + "MPSP" + Suffix + LastName; // Name of the rectangle.
+
+            // Find the rectangle with the given name.
             ChartRectangle mpsp_r = (ChartRectangle)Chart.FindObject(mpsp_name);
 
-            // If already there - ignore.
+            // If the rectangle already exists, update its properties.
             if (mpsp_r != null)
+            {
                 return;
-
-            mpsp_r = Chart.DrawRectangle(mpsp_name, Bars[t1].OpenTime, price, Bars[t2].OpenTime, price - onetick, SinglePrintColor);
-            if (fill)
-                mpsp_r.IsFilled = true;
+            }
+            else
+            {
+                // If the rectangle doesn't exist, create a new one.
+                mpsp_r = Chart.DrawRectangle(mpsp_name, Bars[t1].OpenTime, price, Bars[t2].OpenTime, price - onetick, SinglePrintColor);
+                mpsp_r.IsFilled = fill; // Set if the rectangle should be filled.
+            }
         }
 
         #endregion
@@ -3459,42 +3433,52 @@ namespace cAlgo
         #endregion
 
         // Used for Developing POC, VAH, and VAL lines.
+        /// <summary>
+        /// Distributes a price value between two buffers.
+        /// </summary>
+        /// <param name="buff1">The first buffer.</param>
+        /// <param name="buff2">The second buffer.</param>
+        /// <param name="bar">The bar index.</param>
+        /// <param name="price">The price value to be distributed.</param>
         void DistributeBetweenTwoBuffers(IndicatorDataSeries buff1, IndicatorDataSeries buff2, int bar, double price)
         {
-            // Both buffer are empty:
+            // Check if both buffers are empty.
             if (double.IsNaN(buff1[bar - 1]) && double.IsNaN(buff2[bar - 1]))
             {
-                buff1[bar] = price; // Starting with the first one.
-                buff2[bar] = double.NaN; // The second is initialized to an empty value.
+                // If both buffers are empty, start with the first buffer.
+                buff1[bar] = price; // Assign the price value to the first buffer.
+                buff2[bar] = double.NaN; // Initialize the second buffer to empty.
             }
-            // Buffer #1 already had a value,
-            else if (!double.IsNaN(buff1[bar - 1]))
+            else if (!double.IsNaN(buff1[bar - 1])) // Check if the first buffer has a value.
             {
-                // and it is different from what we get now.
+                // If the first buffer has a value, check if the new price is different.
                 if (buff1[bar - 1] != price)
                 {
-                    buff2[bar] = price; // Use new buffer to get an interrupted shift of lines.
-                    buff1[bar] = double.NaN;
+                    // If the new price is different, use the second buffer to get an interrupted shift of lines.
+                    buff2[bar] = price; // Assign the price value to the second buffer.
+                    buff1[bar] = double.NaN; // Clear the first buffer.
                 }
-                else // and it is the same price:
+                else // If the new price is the same as the first buffer's value.
                 {
-                    buff1[bar] = price; // Use the same buffer.
-                    buff2[bar] = double.NaN;
+                    // Use the same buffer.
+                    buff1[bar] = price; // Assign the price value to the first buffer.
+                    buff2[bar] = double.NaN; // Clear the second buffer.
                 }
             }
-            // Buffer #2 already had a value,
-            else
+            else // If the second buffer has a value.
             {
-                // and it is different from what we get now.
+                // Check if the new price is different from the second buffer's value.
                 if (buff2[bar - 1] != price)
                 {
-                    buff1[bar] = price; // Use new buffer to get an interrupted shift of lines.
-                    buff2[bar] = double.NaN;
+                    // If the new price is different, use the first buffer to get an interrupted shift of lines.
+                    buff1[bar] = price; // Assign the price value to the first buffer.
+                    buff2[bar] = double.NaN; // Clear the second buffer.
                 }
-                else // and it is the same price:
+                else // If the new price is the same as the second buffer's value.
                 {
-                    buff2[bar] = price; // Use the same buffer.
-                    buff1[bar] = double.NaN;
+                    // Use the same buffer.
+                    buff2[bar] = price; // Assign the price value to the second buffer.
+                    buff1[bar] = double.NaN; // Clear the first buffer.
                 }
             }
         }
@@ -3503,33 +3487,42 @@ namespace cAlgo
         //+------------------------------------------------------------------+
         //| Checks all alert conditions and issues alerts if needed.         |
         //+------------------------------------------------------------------+
+        // This method checks for all alert conditions and issues alerts if needed.
+        // It goes through all trend lines and checks if any of them should get alerts.
+        // The alerts are issued based on the alert methods chosen.
+        // The alerts are issued based on the alert type chosen.
+        // The alerts are issued based on the alert check bar chosen.
+        // The alerts are issued based on the alert conditions chosen.
+        // The alerts are issued only for the bars that should be checked.
+        // The alerts are issued only for the rays that should get alerts.
         private void CheckAlerts(int index)
         {
             // No need to check further if no alert method is chosen.
             if (!AlertNative && !AlertEmail && !AlertArrows)// && !AlertPush)
-                return;
+                return; // Exit the method.
 
             // Skip alerts if alerts are disabled for Median, for Value Area, and for Single Print rays.
             if (!AlertForMedian && !AlertForValueArea && !AlertForSinglePrint)
-                return;
+                return; // Exit the method.
 
             // Skip alerts if no cross type is chosen.
             if (!AlertOnPriceBreak && !AlertOnCandleClose && !AlertOnGapCross)
-                return;
+                return; // Exit the method.
 
             // Skip alerts if only closed bar should be checked and it has already been done.
-            if (AlertCheckBar == alert_check_bar.CheckPreviousBar && LastAlertTime == Bars[index].OpenTime) return;
+            if (AlertCheckBar == alert_check_bar.CheckPreviousBar && LastAlertTime == Bars[index].OpenTime)
+                return; // Exit the method.
 
             // Cycle through rays starts here.
             foreach (var ctl in Chart.FindAllObjects<ChartTrendLine>())
             {
-                string object_name = ctl.Name;
+                string object_name = ctl.Name; // Get the name of the trend line.
 
                 // Skip if it is either a non-ray or if this particular ray shouldn't get alerted.
                 if (!(AlertForMedian && object_name.Contains("Median Ray") ||
                     (AlertForValueArea && (object_name.Contains("Value Area HighRay") || object_name.Contains("Value Area LowRay"))) ||
                     (AlertForSinglePrint && object_name.Contains("MPSPR") && ctl.Color != Color.Transparent)))
-                    continue;
+                    continue; // Skip to the next trend line.
 
                 // If everything is fine, go on:
 
@@ -3538,66 +3531,78 @@ namespace cAlgo
                 // Price breaks, candle closes, and gap crosses using Close[0].
                 if (AlertCheckBar == alert_check_bar.CheckCurrentBar)
                 {
-                    if (AlertOnPriceBreak) // Price break alerts.
+                    // Price break alerts.
+                    if (AlertOnPriceBreak)
                     {
+                        // Check if the previous close price is not NaN and if the current close price is different from the previous close price.
                         if (!double.IsNaN(Close_prev) && ((Bars[index].Close >= level && Close_prev < level) || (Bars[index].Close <= level && Close_prev > level)))
                         {
-                            DoAlerts(alert_types.PriceBreak, object_name);
-                            if (AlertArrows) CreateArrowObject("ArrPB" + object_name, Bars[index].OpenTime, Bars[index].Close, AlertArrowColorPB, ChartIconType.Circle);
+                            DoAlerts(alert_types.PriceBreak, object_name); // Issue price break alerts.
+                            if (AlertArrows) CreateArrowObject("ArrPB" + object_name, Bars[index].OpenTime, Bars[index].Close, AlertArrowColorPB, ChartIconType.Circle); // Create an arrow object.
                         }
-                        Close_prev = Bars[index].Close;
+                        Close_prev = Bars[index].Close; // Update the previous close price.
                     }
 
-                    if (AlertOnCandleClose) // Candle close alerts.
+                    // Candle close alerts.
+                    if (AlertOnCandleClose)
                     {
+                        // Check if the current close price is different from the previous close price.
                         if ((Bars[index].Close >= level && Bars[index - 1].Close < level) || (Bars[index].Close <= level && Bars[index - 1].Close > level))
                         {
-                            DoAlerts(alert_types.CandleCloseCrossover, object_name);
-                            if (AlertArrows) CreateArrowObject("ArrCC" + object_name, Bars[index].OpenTime, Bars[index].Close, AlertArrowColorCC, ChartIconType.Square);
+                            DoAlerts(alert_types.CandleCloseCrossover, object_name); // Issue candle close alerts.
+                            if (AlertArrows) CreateArrowObject("ArrCC" + object_name, Bars[index].OpenTime, Bars[index].Close, AlertArrowColorCC, ChartIconType.Square); // Create an arrow object.
                         }
                     }
 
-                    if (AlertOnGapCross) // Gap cross alerts.
+                    // Gap cross alerts.
+                    if (AlertOnGapCross)
                     {
+                        // Check if the current open price is greater or less than the level and if the previous high or low price is less or greater than the level.
                         if ((Bars[index].Open > level && Bars[index - 1].High < level) || (Bars[index].Open < level && Bars[index - 1].Low > level))
                         {
-                            DoAlerts(alert_types.GapCrossover, object_name);
-                            if (AlertArrows) CreateArrowObject("ArrGC" + object_name, Bars[index].OpenTime, level, AlertArrowColorGC, ChartIconType.Diamond);
+                            DoAlerts(alert_types.GapCrossover, object_name); // Issue gap cross alerts.
+                            if (AlertArrows) CreateArrowObject("ArrGC" + object_name, Bars[index].OpenTime, level, AlertArrowColorGC, ChartIconType.Diamond); // Create an arrow object.
                         }
                     }
                 }
                 // Price breaks (using pre-previous High and previous Close), candle closes, and gap crosses using Close[1].
                 else if (AlertCheckBar == alert_check_bar.CheckPreviousBar)
                 {
-                    if (AlertOnPriceBreak) // Price break alerts.
+                    // Price break alerts.
+                    if (AlertOnPriceBreak)
                     {
+                        // Check if the previous close price is different from the previous previous close price and if the previous close price is different from the previous previous close price.
                         if ((Bars[index - 1].High >= level && Bars[index - 1].Close < level && Bars[index - 2].Close < level) ||
                             (Bars[index - 1].Low <= level && Bars[index - 1].Close > level && Bars[index - 2].Close > level))
                         {
-                            DoAlerts(alert_types.PriceBreak, object_name);
-                            if (AlertArrows) CreateArrowObject("ArrPB" + object_name, Bars[index - 1].OpenTime, Bars[index - 1].Close, AlertArrowColorPB, ChartIconType.Circle);
+                            DoAlerts(alert_types.PriceBreak, object_name); // Issue price break alerts.
+                            if (AlertArrows) CreateArrowObject("ArrPB" + object_name, Bars[index - 1].OpenTime, Bars[index - 1].Close, AlertArrowColorPB, ChartIconType.Circle); // Create an arrow object.
                         }
                     }
 
-                    if (AlertOnCandleClose) // Candle close alerts.
+                    // Candle close alerts.
+                    if (AlertOnCandleClose)
                     {
+                        // Check if the previous close price is different from the previous previous close price.
                         if ((Bars[index - 1].Close >= level && Bars[index - 2].Close < level) || (Bars[index - 1].Close <= level && Bars[index - 2].Close > level))
                         {
-                            DoAlerts(alert_types.CandleCloseCrossover, object_name);
-                            if (AlertArrows) CreateArrowObject("ArrCC" + object_name, Bars[index - 1].OpenTime, Bars[index - 1].Close, AlertArrowColorCC, ChartIconType.Square);
+                            DoAlerts(alert_types.CandleCloseCrossover, object_name); // Issue candle close alerts.
+                            if (AlertArrows) CreateArrowObject("ArrCC" + object_name, Bars[index - 1].OpenTime, Bars[index - 1].Close, AlertArrowColorCC, ChartIconType.Square); // Create an arrow object.
                         }
                     }
 
-                    if (AlertOnGapCross) // Gap cross alerts.
+                    // Gap cross alerts.
+                    if (AlertOnGapCross)
                     {
+                        // Check if the previous low price is greater than the level and if the previous high price is less than the level.
                         if ((Bars[index - 1].Low > level && Bars[index - 2].High < level) || (Bars[index - 2].Low > level && Bars[index - 1].High < level))
                         {
-                            DoAlerts(alert_types.GapCrossover, object_name);
-                            if (AlertArrows) CreateArrowObject("ArrGC" + object_name, Bars[index - 1].OpenTime, level, AlertArrowColorGC, ChartIconType.Diamond);
+                            DoAlerts(alert_types.GapCrossover, object_name); // Issue gap cross alerts.
+                            if (AlertArrows) CreateArrowObject("ArrGC" + object_name, Bars[index - 1].OpenTime, level, AlertArrowColorGC, ChartIconType.Diamond); // Create an arrow object.
                         }
                     }
 
-                    LastAlertTime = Bars[index].OpenTime;
+                    LastAlertTime = Bars[index].OpenTime; // Update the last alert time.
                 }
             }
         }
@@ -3662,24 +3667,33 @@ namespace cAlgo
 
         #region Helpers
 
-        //+------------------------------------------------------------------+
-        //| Check if two dates are in the same week.                         |
-        //+------------------------------------------------------------------+
+        /// <summary>
+        /// Check if two dates are in the same week.
+        /// </summary>
+        /// <param name="date1">The first date.</param>
+        /// <param name="date2">The second date.</param>
+        /// <returns>True if the dates are in the same week, false otherwise.</returns>
         private bool SameWeek(DateTime date1, DateTime date2)
         {
-            int seconds_from_start = (int)date1.DayOfWeek * 24 * 3600 + date1.Hour * 3600 + date1.Minute * 60 + date1.Second;
-            int _date1 = (int)date1.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
-            int _date2 = (int)date2.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
+            // Calculate the number of seconds from the start of the week.
+            int secondsFromStart = (int)date1.DayOfWeek * 24 * 3600 + date1.Hour * 3600 + date1.Minute * 60 + date1.Second;
 
+            // Calculate the number of seconds since 1/1/1970 for each date.
+            int date1InSeconds = (int)date1.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
+            int date2InSeconds = (int)date2.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
+
+            // Check if the dates are equal.
             if (date1 == date2)
                 return true;
+            // Check if date2 is before date1.
             else if (date2 < date1)
             {
-                if (_date1 - _date2 <= seconds_from_start)
+                // Check if the difference between date1 and date2 is less than or equal to the difference between date1 and date2 plus the number of seconds from the start of the week.
+                if (date1InSeconds - date2InSeconds <= secondsFromStart)
                     return true;
             }
-            // 604800 - seconds in one week.
-            else if (_date2 - _date1 < 604800 - seconds_from_start)
+            // Check if the difference between date2 and date1 is less than the number of seconds in a week minus the number of seconds from the start of the week.
+            else if (date2InSeconds - date1InSeconds < 604800 - secondsFromStart)
                 return true;
 
             return false;
@@ -3701,89 +3715,100 @@ namespace cAlgo
             return ((int)time.Subtract(new DateTime(1970, 1, 1)).TotalSeconds / 86400);
         }
 
+        /// <summary>
+        /// Returns the number of seconds in a given time frame.
+        /// </summary>
+        /// <param name="tf">The time frame.</param>
+        /// <returns>The number of seconds in the time frame.</returns>
         private int PeriodSeconds(TimeFrame tf)
         {
+            // Initialize the period to one hour.
             TimeSpan period = new TimeSpan(1, 0, 0, 0);
 
-            if (tf == TimeFrame.Minute)
-                period = new TimeSpan(0, 0, 1, 0);
+            // Set the period based on the time frame.
+            switch (tf)
+            {
+                case TimeFrame.Minute:
+                    period = new TimeSpan(0, 0, 1, 0);
+                    break;
+                case TimeFrame.Minute2:
+                    period = new TimeSpan(0, 0, 2, 0);
+                    break;
+                case TimeFrame.Minute3:
+                    period = new TimeSpan(0, 0, 3, 0);
+                    break;
+                case TimeFrame.Minute4:
+                    period = new TimeSpan(0, 0, 4, 0);
+                    break;
+                case TimeFrame.Minute5:
+                    period = new TimeSpan(0, 0, 5, 0);
+                    break;
+                case TimeFrame.Minute6:
+                    period = new TimeSpan(0, 0, 6, 0);
+                    break;
+                case TimeFrame.Minute7:
+                    period = new TimeSpan(0, 0, 7, 0);
+                    break;
+                case TimeFrame.Minute8:
+                    period = new TimeSpan(0, 0, 8, 0);
+                    break;
+                case TimeFrame.Minute9:
+                    period = new TimeSpan(0, 0, 9, 0);
+                    break;
+                case TimeFrame.Minute10:
+                    period = new TimeSpan(0, 0, 10, 0);
+                    break;
+                case TimeFrame.Minute15:
+                    period = new TimeSpan(0, 0, 15, 0);
+                    break;
+                case TimeFrame.Minute20:
+                    period = new TimeSpan(0, 0, 20, 0);
+                    break;
+                case TimeFrame.Minute30:
+                    period = new TimeSpan(0, 0, 30, 0);
+                    break;
+                case TimeFrame.Minute45:
+                    period = new TimeSpan(0, 0, 45, 0);
+                    break;
+                case TimeFrame.Hour:
+                    period = new TimeSpan(0, 1, 0, 0);
+                    break;
+                case TimeFrame.Hour2:
+                    period = new TimeSpan(0, 2, 0, 0);
+                    break;
+                case TimeFrame.Hour3:
+                    period = new TimeSpan(0, 3, 0, 0);
+                    break;
+                case TimeFrame.Hour4:
+                    period = new TimeSpan(0, 4, 0, 0);
+                    break;
+                case TimeFrame.Hour6:
+                    period = new TimeSpan(0, 6, 0, 0);
+                    break;
+                case TimeFrame.Hour8:
+                    period = new TimeSpan(0, 8, 0, 0);
+                    break;
+                case TimeFrame.Hour12:
+                    period = new TimeSpan(0, 12, 0, 0);
+                    break;
+                case TimeFrame.Daily:
+                    period = new TimeSpan(1, 0, 0, 0);
+                    break;
+                case TimeFrame.Day2:
+                    period = new TimeSpan(2, 0, 0, 0);
+                    break;
+                case TimeFrame.Day3:
+                    period = new TimeSpan(3, 0, 0, 0);
+                    break;
+                case TimeFrame.Weekly:
+                    period = new TimeSpan(7, 0, 0, 0);
+                    break;
+                case TimeFrame.Monthly:
+                    period = new TimeSpan(30, 0, 0, 0);
+                    break;
+            }
 
-            if (tf == TimeFrame.Minute2)
-                period = new TimeSpan(0, 0, 2, 0);
-
-            if (tf == TimeFrame.Minute3)
-                period = new TimeSpan(0, 0, 3, 0);
-
-            if (tf == TimeFrame.Minute4)
-                period = new TimeSpan(0, 0, 4, 0);
-
-            if (tf == TimeFrame.Minute5)
-                period = new TimeSpan(0, 0, 5, 0);
-
-            if (tf == TimeFrame.Minute6)
-                period = new TimeSpan(0, 0, 6, 0);
-
-            if (tf == TimeFrame.Minute7)
-                period = new TimeSpan(0, 0, 7, 0);
-
-            if (tf == TimeFrame.Minute8)
-                period = new TimeSpan(0, 0, 8, 0);
-
-            if (tf == TimeFrame.Minute9)
-                period = new TimeSpan(0, 0, 9, 0);
-
-            if (tf == TimeFrame.Minute10)
-                period = new TimeSpan(0, 0, 10, 0);
-
-            if (tf == TimeFrame.Minute15)
-                period = new TimeSpan(0, 0, 15, 0);
-
-            if (tf == TimeFrame.Minute20)
-                period = new TimeSpan(0, 0, 20, 0);
-
-            if (tf == TimeFrame.Minute30)
-                period = new TimeSpan(0, 0, 30, 0);
-
-            if (tf == TimeFrame.Minute45)
-                period = new TimeSpan(0, 0, 45, 0);
-
-            if (tf == TimeFrame.Hour)
-                period = new TimeSpan(0, 1, 0, 0);
-
-            if (tf == TimeFrame.Hour2)
-                period = new TimeSpan(0, 2, 0, 0);
-
-            if (tf == TimeFrame.Hour3)
-                period = new TimeSpan(0, 3, 0, 0);
-
-            if (tf == TimeFrame.Hour4)
-                period = new TimeSpan(0, 4, 0, 0);
-
-            if (tf == TimeFrame.Hour6)
-                period = new TimeSpan(0, 6, 0, 0);
-
-            if (tf == TimeFrame.Hour8)
-                period = new TimeSpan(0, 8, 0, 0);
-
-            if (tf == TimeFrame.Hour12)
-                period = new TimeSpan(0, 12, 0, 0);
-
-            if (tf == TimeFrame.Daily)
-                period = new TimeSpan(1, 0, 0, 0);
-
-            if (tf == TimeFrame.Day2)
-                period = new TimeSpan(2, 0, 0, 0);
-
-            if (tf == TimeFrame.Day3)
-                period = new TimeSpan(3, 0, 0, 0);
-
-            if (tf == TimeFrame.Weekly)
-                period = new TimeSpan(7, 0, 0, 0);
-
-            if (tf == TimeFrame.Monthly)
-                period = new TimeSpan(30, 0, 0, 0);
-
-
+            // Return the number of seconds in the period.
             return ((int)period.TotalSeconds);
         }
 
