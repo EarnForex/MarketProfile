@@ -7,7 +7,7 @@ Market Profile shows where the price has spent more time, highlighting important
 ![Market Profile - example on intraday sessions of GBP/USD](https://github.com/EarnForex/MarketProfile/blob/master/README%20Images/Market%20Profile%20(Intraday).png)
 
 Detailed description of indicator can be found here:
-https://www.earnforex.com/MarketProfile/
+https://www.earnforex.com/indicators/MarketProfile/
 
 Installation instructions:
 https://www.earnforex.com/blog/metatrader-indicators-user-tutorial/
