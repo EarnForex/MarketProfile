@@ -10,6 +10,6 @@ Detailed description of indicator can be found here:
 https://www.earnforex.com/indicators/MarketProfile/
 
 Installation instructions:
-https://www.earnforex.com/blog/metatrader-indicators-user-tutorial/
+https://www.earnforex.com/guides/metatrader-indicators-installation-tutorial/
 
 Contributions in form of discussions and pull requests are welcome!
