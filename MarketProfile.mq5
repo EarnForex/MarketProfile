@@ -1,66 +1,44 @@
 //+------------------------------------------------------------------+
 //|                                                MarketProfile.mq5 |
-//|                             Copyright © 2010-2024, EarnForex.com |
+//|                             Copyright © 2010-2025, EarnForex.com |
 //|                                       https://www.earnforex.com/ |
 //+------------------------------------------------------------------+
 #property copyright "EarnForex.com"
-#property link      "https://www.earnforex.com/metatrader-indicators/MarketProfile/"
-#property version   "1.23"
+#property link      "https://www.earnforex.com/indicators/MarketProfile/"
+#property version   "1.24"
 
-#property description "Displays the Market Profile indicator for intraday, daily, weekly, or monthly trading sessions."
-#property description "Daily - should be attached to M5-M30 timeframes. M30 is recommended."
-#property description "Weekly - should be attached to M30-H4 timeframes. H1 is recommended."
-#property description "Weeks start on Sunday."
-#property description "Monthly - should be attached to H1-D1 timeframes. H4 is recommended."
-#property description "Intraday - should be attached to M1-M15 timeframes. M5 is recommended.\r\n"
+#property description "Displays the Market Profile indicator. Supports the following sessions:"
+#property description "Intraday, daily, weekly, monthly, quarterly, semiannual, annual and free-form rectangle."
+#property description ""
 #property description "Designed for major currency pairs, but should work also with exotic pairs, CFDs, or commodities."
 //+------------------------------------------------------------------+
 // Rectangle session - a rectangle's name should start with 'MPR' and must not contain an underscore ('_').
 //+------------------------------------------------------------------+
 #property indicator_chart_window
-// Two buffers are used for the Developing POC and Developing VAH/VAL display because a single buffer wouldn't support an interrupting line.
-#property indicator_plots 6
-#property indicator_buffers 6
+#property indicator_plots 3
+#property indicator_buffers 3
 #property indicator_color1  clrGreen
-#property indicator_color2  clrGreen
-#property indicator_width1  5
-#property indicator_width2  5
-#property indicator_type1   DRAW_LINE
-#property indicator_type2   DRAW_LINE
-#property indicator_style1  STYLE_SOLID
-#property indicator_style2  STYLE_SOLID
+#property indicator_width1  2
+#property indicator_type1   DRAW_ARROW
 #property indicator_label1  "Developing POC"
-#property indicator_label2  "Developing POC"
-#property indicator_color3  clrGoldenrod
-#property indicator_color4  clrGoldenrod
-#property indicator_width3  5
-#property indicator_width4  5
-#property indicator_type3   DRAW_LINE
-#property indicator_type4   DRAW_LINE
-#property indicator_style3  STYLE_SOLID
-#property indicator_style4  STYLE_SOLID
-#property indicator_label3  "Developing VAH"
-#property indicator_label4  "Developing VAH"
-#property indicator_color5  clrSalmon
-#property indicator_color6  clrSalmon
-#property indicator_width5  5
-#property indicator_width6  5
-#property indicator_type5   DRAW_LINE
-#property indicator_type6   DRAW_LINE
-#property indicator_style5  STYLE_SOLID
-#property indicator_style6  STYLE_SOLID
-#property indicator_label5  "Developing VAL"
-#property indicator_label6  "Developing VAL"
+#property indicator_color2  clrGoldenrod
+#property indicator_width2  2
+#property indicator_type2   DRAW_ARROW
+#property indicator_label2  "Developing VAH"
+#property indicator_color3  clrSalmon
+#property indicator_width3  2
+#property indicator_type3   DRAW_ARROW
+#property indicator_label3  "Developing VAL"
 
 enum color_scheme
 {
-    Blue_to_Red,        // Blue to Red
-    Red_to_Green,       // Red to Green
-    Green_to_Blue,      // Green to Blue
-    Yellow_to_Cyan,     // Yellow to Cyan
-    Magenta_to_Yellow,  // Magenta to Yellow
-    Cyan_to_Magenta,    // Cyan to Magenta
-    Single_Color        // Single Color
+    Blue_to_Red,       // Blue to Red
+    Red_to_Green,      // Red to Green
+    Green_to_Blue,     // Green to Blue
+    Yellow_to_Cyan,    // Yellow to Cyan
+    Magenta_to_Yellow, // Magenta to Yellow
+    Cyan_to_Magenta,   // Cyan to Magenta
+    Single_Color       // Single Color
 };
 
 enum session_period
@@ -68,15 +46,18 @@ enum session_period
     Daily,
     Weekly,
     Monthly,
+    Quarterly,
+    Semiannual,
+    Annual,
     Intraday,
     Rectangle
 };
 
 enum sat_sun_solution
 {
-    Saturday_Sunday_Normal_Days,    // Normal sessions
-    Ignore_Saturday_Sunday,         // Ignore Saturday and Sunday
-    Append_Saturday_Sunday          // Append Saturday and Sunday
+    Saturday_Sunday_Normal_Days, // Normal sessions
+    Ignore_Saturday_Sunday,      // Ignore Saturday and Sunday
+    Append_Saturday_Sunday       // Append Saturday and Sunday
 };
 
 enum sessions_to_draw_rays
@@ -84,8 +65,8 @@ enum sessions_to_draw_rays
     None,
     Previous,
     Current,
-    PreviousCurrent,    // Previous & Current
-    AllPrevious,        // All Previous
+    PreviousCurrent, // Previous & Current
+    AllPrevious,     // All Previous
     All
 };
 
@@ -168,6 +149,9 @@ input int            SinglePrintRayWidth      = 1;
 input color          ProminentMedianColor     = clrYellow;
 input ENUM_LINE_STYLE ProminentMedianStyle    = STYLE_SOLID;
 input int            ProminentMedianWidth     = 4;
+input bool           ShowTPOCounts            = false;          // ShowTPOCounts: Show TPO counts above/below POC.
+input color          TPOCountAboveColor       = clrHoneydew;    // TPOCountAboveColor: Color for TPO count above POC.
+input color          TPOCountBelowColor       = clrMistyRose;   // TPOCountBelowColor: Color for TPO count below POC.
 input bool           RightToLeft              = false;          // RightToLeft: Draw histogram from right to left.
 
 input group "Performance"
@@ -226,7 +210,7 @@ input int              ProminentMedianPercentage      = 101;    // Percentage of
 int PointMultiplier_calculated;     // Will have to be calculated based number digits in a quote if PointMultiplier input is 0.
 int DigitsM;                        // Number of digits normalized based on PointMultiplier_calculated.
 bool InitFailed;                    // Used for soft INIT_FAILED. Hard INIT_FAILED resets input parameters.
-datetime StartDate;                 // Will hold either StartFromDate or Time[0].
+datetime StartDate;                 // Will hold either StartFromDate or iTime(Symbol(), Period(), 0).
 double onetick;                     // One normalized pip.
 bool FirstRunDone = false;          // If true - OnCalculate() was already executed once.
 string Suffix = "_";                // Will store object name suffix depending on timeframe.
@@ -236,6 +220,13 @@ int Timer = 0;                      // For throttling updates of market profiles
 bool NeedToRestartDrawing = false;  // Global flag for RightToLeft redrawing;
 int CleanedUpOn = 0;                // To prevent cleaning up the buffers again and again when the platform just starts.
 double ValueAreaPercentage_double = 0.7; // Will be calculated based on the input parameter in OnInit().
+datetime LastAlertTime_CandleCross = 0, LastAlertTime_GapCross = 0; // For CheckCurrentBar alerts.
+datetime LastAlertTime = 0;         // For CheckPreviousBar alerts;
+double Close_prev = EMPTY_VALUE;    // Previous price value for Price Break alerts.
+int ArrowsCounter = 0;              // Counter for naming of alert arrows.
+sat_sun_solution _SaturdaySunday;   // To change the input value if incompatible with timeframe.
+session_period _Session;            // Can be modified during runtime (hotkeys).
+string m_FileName;                  // File name to store the session type.
 
 // Used for ColorBullBear.
 bar_direction CurrentBarDirection = Neutral;
@@ -253,10 +244,6 @@ color_scheme IDColorScheme[4];
 int IntradaySessionCount = 0;
 int _SessionsToCount;
 int IntradayCrossSessionDefined = -1; // For special case used only with Ignore_Saturday_Sunday on Monday.
-datetime LastAlertTime_CandleCross = 0, LastAlertTime_GapCross = 0; // For CheckCurrentBar alerts.
-datetime LastAlertTime = 0; // For CheckPreviousBar alerts;
-double Close_prev = EMPTY_VALUE;   // Previous price value for Price Break alerts.
-int ArrowsCounter = 0;             // Counter for naming of alert arrows.
 
 // We need to know where each session starts and its price range for when RaysUntilIntersection != Stop_No_Rays.
 // These are used also when RaysUntilIntersection == Stop_No_Rays for Intraday sessions counting.
@@ -281,176 +268,28 @@ public:
     string name;
     CRectangleMP(string);
     ~CRectangleMP(void) {};
-    void Process(int, const double& High[], const double& Low[], const datetime& Time[], const int rates_total);
+    void Process(int, const int rates_total);
     void ResetPrevTime0();
 };
 CRectangleMP* MPR_Array[];
 int mpr_total = 0;
 uint LastRecalculationTime = 0;
 
-double DevelopingPOC_1[], DevelopingPOC_2[], DevelopingVAH_1[], DevelopingVAH_2[], DevelopingVAL_1[], DevelopingVAL_2[]; // Indicator buffers for Developing POC and VAH/VAL.
+double DevelopingPOC[], DevelopingVAH[], DevelopingVAL[]; // Indicator buffers for Developing POC and VAH/VAL.
 
 //+------------------------------------------------------------------+
 //| Custom indicator initialization function                         |
 //+------------------------------------------------------------------+
 int OnInit()
 {
-    InitFailed = false;
+    m_FileName = "MP_" + IntegerToString(ChartID()) + ".txt";
 
-    // Sessions to count for the object creation.
-    _SessionsToCount = SessionsToCount;
-
-    // Check for user Session settings.
-    if (Session == Daily)
+    if (!LoadSettingsFromDisk()) // Trying to read the saved session type from file.
     {
-        Suffix = "_D";
-        if ((PeriodSeconds() < PeriodSeconds(PERIOD_M5)) || (PeriodSeconds() > PeriodSeconds(PERIOD_M30)))
-        {
-            string alert_text = "Timeframe should be between M5 and M30 for a Daily session.";
-            if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
-            else Print("Initialization failed: " + alert_text);
-            InitFailed = true; // Soft INIT_FAILED.
-        }
-    }
-    else if (Session == Weekly)
-    {
-        Suffix = "_W";
-        if ((PeriodSeconds() < PeriodSeconds(PERIOD_M30)) || (PeriodSeconds() > PeriodSeconds(PERIOD_H4)))
-        {
-            string alert_text = "Timeframe should be between M30 and H4 for a Weekly session.";
-            if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
-            else Print("Initialization failed: " + alert_text);
-            InitFailed = true; // Soft INIT_FAILED.
-        }
-    }
-    else if (Session == Monthly)
-    {
-        Suffix = "_M";
-        if ((PeriodSeconds() < PeriodSeconds(PERIOD_H1)) || (PeriodSeconds() > PeriodSeconds(PERIOD_D1)))
-        {
-            string alert_text = "Timeframe should be between H1 and D1 for a Monthly session.";
-            if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
-            else Print("Initialization failed: " + alert_text);
-            InitFailed = true; // Soft INIT_FAILED.
-        }
-    }
-    else if (Session == Intraday)
-    {
-        if (PeriodSeconds() > PeriodSeconds(PERIOD_M15))
-        {
-            string alert_text = "Timeframe should not be higher than M15 for an Intraday sessions.";
-            if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
-            else Print("Initialization failed: " + alert_text);
-            InitFailed = true; // Soft INIT_FAILED.
-        }
-
-        // Check if intraday user settings are valid.
-        IntradaySessionCount = 0;
-        if (!CheckIntradaySession(EnableIntradaySession1, IntradaySession1StartTime, IntradaySession1EndTime, IntradaySession1ColorScheme)) return INIT_PARAMETERS_INCORRECT;
-        if (!CheckIntradaySession(EnableIntradaySession2, IntradaySession2StartTime, IntradaySession2EndTime, IntradaySession2ColorScheme)) return INIT_PARAMETERS_INCORRECT;
-        if (!CheckIntradaySession(EnableIntradaySession3, IntradaySession3StartTime, IntradaySession3EndTime, IntradaySession3ColorScheme)) return INIT_PARAMETERS_INCORRECT;
-        if (!CheckIntradaySession(EnableIntradaySession4, IntradaySession4StartTime, IntradaySession4EndTime, IntradaySession4ColorScheme)) return INIT_PARAMETERS_INCORRECT;
-
-        // Warn user about Intraday mode
-        if (IntradaySessionCount == 0)
-        {
-            string alert_text = "Enable at least one intraday session if you want to use Intraday mode.";
-            if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
-            else Print("Initialization failed: " + alert_text);
-            InitFailed = true; // Soft INIT_FAILED.
-        }
-    }
-    else if ((Session == Rectangle) && (SeamlessScrollingMode)) // No point in seamless scrolling mode with rectangle sessions.
-    {
-        string alert_text = "Seamless scrolling mode doesn't work with Rectangle sessions.";
-        if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
-        else Print("Initialization failed: " + alert_text);
-        InitFailed = true; // Soft INIT_FAILED.
-    }
-    
-    // Indicator Name.
-    IndicatorSetString(INDICATOR_SHORTNAME, "MarketProfile " + EnumToString(Session));
-
-    // Adaptive point multiplier. Calculate based on number of digits in the quote (before plus after the dot).
-    if (PointMultiplier == 0)
-    {
-        double quote;
-        bool success = SymbolInfoDouble(Symbol(), SYMBOL_ASK, quote);
-        if (!success)
-        {
-            Print("Failed to get price data. Error #", GetLastError(), ". Using PointMultiplier = 1.");
-            PointMultiplier_calculated = 1;
-        }
-        else
-        {
-            string s = DoubleToString(quote, _Digits);
-            StringReplace(s, "-", ""); // Remove the minus sign for a negative price.
-            int total_digits = StringLen(s);
-            // If there is a dot in a quote.
-            if (StringFind(s, ".") != -1) total_digits--; // Decrease the count of digits by one.
-            if (total_digits <= 5) PointMultiplier_calculated = 1;
-            else PointMultiplier_calculated = (int)MathPow(10, total_digits - 5);
-        }
-    }
-    else // Normal point multiplier.
-    {
-        PointMultiplier_calculated = PointMultiplier;
+        _Session = Session;
     }
 
-    // Based on number of digits in PointMultiplier_calculated. -1 because if PointMultiplier_calculated < 10, it does not modify the number of digits.
-    DigitsM = _Digits - (StringLen(IntegerToString(PointMultiplier_calculated)) - 1);
-    onetick = NormalizeDouble(_Point * PointMultiplier_calculated, DigitsM);
-
-    // Adjust for TickSize granularity if needed.
-    double TickSize = SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_SIZE);
-    if (onetick < TickSize)
-    {
-        DigitsM = _Digits - (StringLen(IntegerToString((int)MathRound(TickSize / _Point))) - 1);
-        onetick = NormalizeDouble(TickSize, DigitsM);
-    }
-
-    // Get color scheme from user input.
-    CurrentColorScheme = ColorScheme;
-
-    // To clean up potential leftovers when applying a chart template.
-    ObjectCleanup();
-
-    // Check if user wants Session mode as Rectangle or if it is a right-to-left session, or if rays should be constantly monitored, or seamless scrolling is on.
-    if ((Session == Rectangle) || (RightToLeft) || (HideRaysFromInvisibleSessions) || (SeamlessScrollingMode))
-    {
-        EventSetMillisecondTimer(1000);
-    }
-    
-    if (!EnableDevelopingPOC)
-    {
-        PlotIndexSetInteger(0, PLOT_LINE_COLOR, clrNONE);
-        PlotIndexSetInteger(1, PLOT_LINE_COLOR, clrNONE);
-    }
-    
-    // Better do this unconditionally to avoid buffer errors.
-    SetIndexBuffer(0, DevelopingPOC_1, INDICATOR_DATA);
-    ArraySetAsSeries(DevelopingPOC_1, true);
-    PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-    SetIndexBuffer(1, DevelopingPOC_2, INDICATOR_DATA);
-    ArraySetAsSeries(DevelopingPOC_2, true);
-    PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-    SetIndexBuffer(2, DevelopingVAH_1, INDICATOR_DATA);
-    PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-    ArraySetAsSeries(DevelopingVAH_1, true);
-    SetIndexBuffer(3, DevelopingVAH_2, INDICATOR_DATA);
-    PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-    ArraySetAsSeries(DevelopingVAH_2, true);
-    SetIndexBuffer(4, DevelopingVAL_1, INDICATOR_DATA);
-    PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-    ArraySetAsSeries(DevelopingVAL_1, true);
-    SetIndexBuffer(5, DevelopingVAL_2, INDICATOR_DATA);
-    PlotIndexSetDouble(5, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-    ArraySetAsSeries(DevelopingVAL_2, true);
-
-    ValueAreaPercentage_double = ValueAreaPercentage * 0.01;
-
-    // Initialization successful
-    return INIT_SUCCEEDED;
+    return Initialize();
 }
 
 //+------------------------------------------------------------------+
@@ -458,15 +297,18 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-    if (Session == Rectangle)
+    Deinitialize();
+
+    if (reason == REASON_PARAMETERS) GlobalVariableSet("MP-" + IntegerToString(ChartID()) + "-Parameters", 1);
+
+    if ((reason == REASON_REMOVE) || (reason == REASON_CHARTCLOSE) || (reason == REASON_PROGRAM))
     {
-        for (int i = 0; i < mpr_total; i++)
-        {
-            ObjectCleanup(MPR_Array[i].name + "_");
-            delete MPR_Array[i];
-        }
+        DeleteSettingsFile();
     }
-    else ObjectCleanup();
+    else
+    {
+        SaveSettingsOnDisk();
+    }
 }
 
 //+------------------------------------------------------------------+
@@ -490,182 +332,30 @@ int OnCalculate(const int rates_total,
         return 0;
     }
 
-    // New bars arrived?
-    if (((EnableDevelopingPOC) || (EnableDevelopingVAHVAL)) && (rates_total - prev_calculated > 1) && (CleanedUpOn != rates_total))
+    if (prev_calculated == 0) // Cannot do this inside OnInit() because chart not fully loaded yet.
     {
-        // Initialize the indicator buffers.
-        for (int i = prev_calculated; i < rates_total; i++)
-        {
-            DevelopingPOC_1[i] = EMPTY_VALUE;
-            DevelopingPOC_2[i] = EMPTY_VALUE;
-            DevelopingVAH_1[i] = EMPTY_VALUE;
-            DevelopingVAH_2[i] = EMPTY_VALUE;
-            DevelopingVAL_1[i] = EMPTY_VALUE;
-            DevelopingVAL_2[i] = EMPTY_VALUE;
-        }
-        if ((prev_calculated == 0) && (Session == Rectangle)) // If prev_calculated got reset for some reason, reset the rectangles.
-        {
-            for (int i = mpr_total - 1; i >= 0 ; i--)
-            {
-                MPR_Array[i].ResetPrevTime0();
-            }
-        }
-        CleanedUpOn = rates_total; // To prevent cleaning up the buffers again and again when the platform just starts.
+        InitializeOnetick();
     }
 
-    // Use buffers as Timeseries and not ArrayNotSeries.
-    ArraySetAsSeries(Open, true);
-    ArraySetAsSeries(High, true);
-    ArraySetAsSeries(Low, true);
-    ArraySetAsSeries(Close, true);
-    ArraySetAsSeries(Time, true);
-
-    CheckAlerts(Open, High, Low, Close, Time);
-
-    // Check if seamless scrolling mode should be on, else if user requests current session, else a specific date.
-    if (SeamlessScrollingMode)
-    {
-        int last_visible_bar = (int)ChartGetInteger(ChartID(), CHART_FIRST_VISIBLE_BAR) - (int)ChartGetInteger(ChartID(), CHART_WIDTH_IN_BARS) + 1;
-        if (last_visible_bar < 0) last_visible_bar = 0;
-        StartDate = Time[last_visible_bar];
-    }
-    else if (StartFromCurrentSession) StartDate = Time[0];
-    else StartDate = StartFromDate;
-
-    // Adjust date if Ignore_Saturday_Sunday is set.
-    if (SaturdaySunday == Ignore_Saturday_Sunday)
-    {
-        // Saturday? Switch to Friday.
-        if (TimeDayOfWeek(StartDate) == 6) StartDate -= 86400;
-        // Sunday? Switch to Friday too.
-        else if (TimeDayOfWeek(StartDate) == 0) StartDate -= 2 * 86400;
-    }
-
-    // If we calculate profiles for the past sessions, no need to run it again.
-    if ((FirstRunDone) && (StartDate != Time[0])) return rates_total;
-
-    // Delay the update of Market Profile if ThrottleRedraw is given.
-    if ((ThrottleRedraw > 0) && (Timer > 0))
-    {
-        if ((int)TimeLocal() - Timer < ThrottleRedraw) return rates_total;
-    }
-
-    // Calculate rectangle.
-    if (Session == Rectangle) // Everything becomes very simple if rectangle sessions are used.
-    {
-        CheckRectangles(High, Low, Time, rates_total);
-        Timer = (int)TimeLocal();
-        return rates_total;
-    }
-
-    // Recalculate everything if there were missing bars or something like that. Or if RightToLeft is on and a new right-most session arrived.
-    if ((rates_total - prev_calculated > 1) || (NeedToRestartDrawing))
-    {
-        FirstRunDone = false;
-        ObjectCleanup();
-        NeedToRestartDrawing = false;
-        if (EnableDevelopingPOC)
-        {
-            // Initialize the DPOC buffers.
-            ArrayInitialize(DevelopingPOC_1, EMPTY_VALUE); 
-            ArrayInitialize(DevelopingPOC_2, EMPTY_VALUE);
-        }
-    }
-
-    // Get start and end bar numbers of the given session.
-    int sessionend = FindSessionEndByDate(Time, StartDate, rates_total); // Finding the session's right-most bar using the date of the previous session or starting date.
-    int sessionstart = FindSessionStart(Time, sessionend, rates_total); // Finding the session's left-most bar using its end (right-most) bar.
-
-    if (sessionstart == -1)
-    {
-        Print("Something went wrong! Waiting for data to load.");
-        return prev_calculated;
-    }
-
-    int SessionToStart = 0;
-    // If all sessions have already been counted, jump to the current one.
-    if (FirstRunDone) SessionToStart = _SessionsToCount - 1;
-    else
-    {
-        // Move back to the oldest session to count to start from it.
-        for (int i = 1; i < _SessionsToCount; i++)
-        {
-            sessionend = sessionstart + 1;
-            if (sessionend >= rates_total) return prev_calculated;
-            if (SaturdaySunday == Ignore_Saturday_Sunday)
-            {
-                // Pass through Sunday and Saturday.
-                while ((TimeDayOfWeek(Time[sessionend]) == 0) || (TimeDayOfWeek(Time[sessionend]) == 6))
-                {
-                    sessionend++;
-                    if (sessionend >= rates_total) break;
-                }
-            }
-            sessionstart = FindSessionStart(Time, sessionend, rates_total);
-        }
-    }
-
-    // We begin from the oldest session coming to the current session or to StartFromDate.
-    for (int i = SessionToStart; i < _SessionsToCount; i++)
-    {
-        if (Session == Intraday)
-        {
-            if (!ProcessIntradaySession(sessionstart, sessionend, i, High, Low, Time, rates_total)) return 0;
-        }
-        else
-        {
-            if (Session == Daily) Max_number_of_bars_in_a_session = PeriodSeconds(PERIOD_D1) / PeriodSeconds();
-            else if (Session == Weekly) Max_number_of_bars_in_a_session = 604800 / PeriodSeconds();
-            else if (Session == Monthly) Max_number_of_bars_in_a_session = 2678400 / PeriodSeconds();
-            if (SaturdaySunday == Append_Saturday_Sunday)
-            {
-                // The start is on Sunday - add remaining time.
-                if (TimeDayOfWeek(Time[sessionstart]) == 0) Max_number_of_bars_in_a_session += (24 * 3600 - (TimeHour(Time[sessionstart]) * 3600 + TimeMinute(Time[sessionstart]) * 60)) / PeriodSeconds();
-                // The end is on Saturday. +1 because even 0:00 bar deserves a bar.
-                if (TimeDayOfWeek(Time[sessionend]) == 6) Max_number_of_bars_in_a_session += ((TimeHour(Time[sessionend]) * 3600 + TimeMinute(Time[sessionend]) * 60)) / PeriodSeconds() + 1;
-            }
-            if (!ProcessSession(sessionstart, sessionend, i, High, Low, Time, rates_total)) return 0;
-        }
-
-        // Go to the newer session only if there is one or more left.
-        if (_SessionsToCount - i > 1)
-        {
-            sessionstart = sessionend - 1;
-            if (SaturdaySunday == Ignore_Saturday_Sunday)
-            {
-                // Pass through Sunday and Saturday.
-                while ((TimeDayOfWeek(Time[sessionstart]) == 0) || (TimeDayOfWeek(Time[sessionstart]) == 6))
-                {
-                    sessionstart--;
-                    if (sessionstart == 0) break;
-                }
-            }
-            sessionend = FindSessionEndByDate(Time, Time[sessionstart], rates_total);
-        }
-    }
-
-    if ((ShowValueAreaRays != None) || (ShowMedianRays != None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays))) CheckRays();
-
-    FirstRunDone = true;
-
-    Timer = (int)TimeLocal();
-
-    return rates_total;
+    return OnCalculateMain(rates_total, prev_calculated);
 }
 
 //+------------------------------------------------------------------+
 //| Finds the session's starting bar number for any given bar number.|
 //| n - bar number for which to find starting bar.                   |
 //+------------------------------------------------------------------+
-int FindSessionStart(const datetime &Time[], const int n, const int rates_total)
+int FindSessionStart(const int n, const int rates_total)
 {
-    if (Session == Daily) return FindDayStart(Time, n, rates_total);
-    else if (Session == Weekly) return FindWeekStart(Time, n, rates_total);
-    else if (Session == Monthly) return FindMonthStart(Time, n, rates_total);
-    else if (Session == Intraday)
+    if (_Session == Daily) return FindDayStart(n, rates_total);
+    else if (_Session == Weekly) return FindWeekStart(n, rates_total);
+    else if (_Session == Monthly) return FindMonthStart(n, rates_total);
+    else if (_Session == Quarterly) return FindQuarterStart(n, rates_total);
+    else if (_Session == Semiannual) return FindHalfyearStart(n, rates_total);
+    else if (_Session == Annual) return FindYearStart(n, rates_total);
+    else if (_Session == Intraday)
     {
         // A special case when Append_Saturday_Sunday is on and n is on Monday.
-        if ((SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(Time[n] + TimeShiftMinutes * 60) == 1))
+        if ((_SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60) == 1))
         {
             // One of the intraday sessions should start at 00:00 or have end < start.
             for (int intraday_i = 0; intraday_i < IntradaySessionCount; intraday_i++)
@@ -673,15 +363,15 @@ int FindSessionStart(const datetime &Time[], const int n, const int rates_total)
                 if ((IDStartTime[intraday_i] == 0) || (IDStartTime[intraday_i] > IDEndTime[intraday_i]))
                 {
                     // "Monday" part of the day. Effective only for "end < start" sessions.
-                    if ((TimeHour(Time[n]) * 60 + TimeMinute(Time[n]) >= IDEndTime[intraday_i]) && (IDStartTime[intraday_i] > IDEndTime[intraday_i]))
+                    if ((TimeHour(iTime(Symbol(), Period(), n)) * 60 + TimeMinute(iTime(Symbol(), Period(), n)) >= IDEndTime[intraday_i]) && (IDStartTime[intraday_i] > IDEndTime[intraday_i]))
                     {
                         // Find the first bar on Monday after the borderline session.
                         int x = n;
-                        while ((x < rates_total) && (TimeHour(Time[x]) * 60 + TimeMinute(Time[x]) >= IDEndTime[intraday_i]))
+                        while ((x < rates_total) && (TimeHour(iTime(Symbol(), Period(), x)) * 60 + TimeMinute(iTime(Symbol(), Period(), x)) >= IDEndTime[intraday_i]))
                         {
                             x++;
                             // If there is no Sunday session (stepped into Saturday or another non-Sunday/non-Monday day, return normal day start.
-                            if (TimeDayOfWeek(Time[x] + TimeShiftMinutes * 60) > 1) return FindDayStart(Time, n, rates_total);
+                            if (TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) > 1) return FindDayStart(n, rates_total);
                         }
                         return (x - 1);
                     }
@@ -689,7 +379,7 @@ int FindSessionStart(const datetime &Time[], const int n, const int rates_total)
                     {
                         // Find the first Sunday bar.
                         int x = n;
-                        while ((x < rates_total) && ((TimeDayOfYear(Time[n] + TimeShiftMinutes * 60) == TimeDayOfYear(Time[x] + TimeShiftMinutes * 60)) || (TimeDayOfWeek(Time[x] + TimeShiftMinutes * 60) == 0))) x++;
+                        while ((x < rates_total) && ((TimeDayOfYear(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60) == TimeDayOfYear(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60)) || (TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) == 0))) x++;
                         // Number of sessions should be increased as we "lose" one session to Sunday.
                         _SessionsToCount++;
                         return (x - 1);
@@ -698,7 +388,7 @@ int FindSessionStart(const datetime &Time[], const int n, const int rates_total)
             }
         }
 
-        return FindDayStart(Time, n, rates_total);
+        return FindDayStart(n, rates_total);
     }
     return -1;
 }
@@ -707,19 +397,19 @@ int FindSessionStart(const datetime &Time[], const int n, const int rates_total)
 //| Finds the day's starting bar number for any given bar number.    |
 //| n - bar number for which to find starting bar.                   |
 //+------------------------------------------------------------------+
-int FindDayStart(const datetime &Time[], const int n, const int rates_total)
+int FindDayStart(const int n, const int rates_total)
 {
     if (n >= rates_total) return -1;
     int x = n;
-    int time_x_day_of_week = TimeDayOfWeek(Time[x] + TimeShiftMinutes * 60);
+    int time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
     int time_n_day_of_week = time_x_day_of_week;
 
     // Condition should pass also if Append_Saturday_Sunday is on and it is Sunday or it is Friday but the bar n is on Saturday.
-    while ((TimeDayOfYear(Time[n] + TimeShiftMinutes * 60) == TimeDayOfYear(Time[x] + TimeShiftMinutes * 60)) || ((SaturdaySunday == Append_Saturday_Sunday) && ((time_x_day_of_week == 0) || ((time_x_day_of_week == 5) && (time_n_day_of_week == 6)))))
+    while ((TimeDayOfYear(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60) == TimeDayOfYear(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60)) || ((_SaturdaySunday == Append_Saturday_Sunday) && ((time_x_day_of_week == 0) || ((time_x_day_of_week == 5) && (time_n_day_of_week == 6)))))
     {
         x++;
         if (x >= rates_total) break;
-        time_x_day_of_week = TimeDayOfWeek(Time[x] + TimeShiftMinutes * 60);
+        time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
     }
 
     return (x - 1);
@@ -729,20 +419,20 @@ int FindDayStart(const datetime &Time[], const int n, const int rates_total)
 //| Finds the week's starting bar number for any given bar number.   |
 //| n - bar number for which to find starting bar.                   |
 //+------------------------------------------------------------------+
-int FindWeekStart(const datetime &Time[], const int n, const int rates_total)
+int FindWeekStart(const int n, const int rates_total)
 {
     if (n >= rates_total) return -1;
     int x = n;
-    int time_x_day_of_week = TimeDayOfWeek(Time[x] + TimeShiftMinutes * 60);
+    int time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
 
     // Condition should pass also if Append_Saturday_Sunday is on and it is Sunday.
-    while ((SameWeek(Time[n] + TimeShiftMinutes * 60, Time[x] + TimeShiftMinutes * 60)) || ((SaturdaySunday == Append_Saturday_Sunday) && (time_x_day_of_week == 0)))
+    while ((SameWeek(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60, iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60)) || ((_SaturdaySunday == Append_Saturday_Sunday) && (time_x_day_of_week == 0)))
     {
         // If Ignore_Saturday_Sunday is on and we stepped into Sunday, stop.
-        if ((SaturdaySunday == Ignore_Saturday_Sunday) && (time_x_day_of_week == 0)) break;
+        if ((_SaturdaySunday == Ignore_Saturday_Sunday) && (time_x_day_of_week == 0)) break;
         x++;
         if (x >= rates_total) break;
-        time_x_day_of_week = TimeDayOfWeek(Time[x] + TimeShiftMinutes * 60);
+        time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
     }
 
     return (x - 1);
@@ -752,36 +442,190 @@ int FindWeekStart(const datetime &Time[], const int n, const int rates_total)
 //| Finds the month's starting bar number for any given bar number.  |
 //| n - bar number for which to find starting bar.                   |
 //+------------------------------------------------------------------+
-int FindMonthStart(const datetime &Time[], const int n, const int rates_total)
+int FindMonthStart(const int n, const int rates_total)
 {
     if (n >= rates_total) return -1;
     int x = n;
-    int time_x_day_of_week = TimeDayOfWeek(Time[x] + TimeShiftMinutes * 60);
+    int time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
     // These don't change:
-    int time_n_day_of_week = TimeDayOfWeek(Time[n] + TimeShiftMinutes * 60);
-    int time_n_day = TimeDay(Time[n] + TimeShiftMinutes * 60);
-    int time_n_month = TimeMonth(Time[n] + TimeShiftMinutes * 60);
+    int time_n_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60);
+    int time_n_day = TimeDay(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60);
+    int time_n_month = TimeMonth(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60);
 
     // Condition should pass also if Append_Saturday_Sunday is on and it is Sunday or Saturday the 1st day of month.
-    while ((time_n_month == TimeMonth(Time[x] + TimeShiftMinutes * 60)) || ((SaturdaySunday == Append_Saturday_Sunday) && ((time_x_day_of_week == 0) || ((time_n_day_of_week == 6) && (time_n_day == 1)))))
+    while ((time_n_month == TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60)) || ((_SaturdaySunday == Append_Saturday_Sunday) && ((time_x_day_of_week == 0) || ((time_n_day_of_week == 6) && (time_n_day == 1)))))
     {
         // If month distance somehow becomes greater than 1, break.
-        int month_distance = time_n_month - TimeMonth(Time[x] + TimeShiftMinutes * 60);
-        if (month_distance < 0) month_distance = 12 - month_distance;
+        int month_distance = time_n_month - TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+        if (month_distance < 0) month_distance = 12 + month_distance;
         if (month_distance > 1) break;
         // Check if Append_Saturday_Sunday is on and today is Saturday the 1st day of month. Despite it being current month, it should be skipped because it is appended to the previous month. Unless it is the sessionend day, which is the Saturday of the next month attached to this session.
-        if (SaturdaySunday == Append_Saturday_Sunday)
+        if (_SaturdaySunday == Append_Saturday_Sunday)
         {
-            if ((time_x_day_of_week == 6) && (TimeDay(Time[x] + TimeShiftMinutes * 60) == 1) && (time_n_day != TimeDay(Time[x] + TimeShiftMinutes * 60))) break;
+            if ((time_x_day_of_week == 6) && (TimeDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) == 1) && (time_n_day != TimeDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60))) break;
         }
         // Check if Ignore_Saturday_Sunday is on and today is Sunday or Saturday the 2nd or the 1st day of month. Despite it being current month, it should be skipped because it is ignored.
-        if (SaturdaySunday == Ignore_Saturday_Sunday)
+        if (_SaturdaySunday == Ignore_Saturday_Sunday)
         {
-            if (((time_x_day_of_week == 0) || (time_x_day_of_week == 6)) && ((TimeDay(Time[x] + TimeShiftMinutes * 60) == 1) || (TimeDay(Time[x] + TimeShiftMinutes * 60) == 2))) break;
+            if (((time_x_day_of_week == 0) || (time_x_day_of_week == 6)) && ((TimeDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) == 1) || (TimeDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) == 2))) break;
         }
         x++;
         if (x >= rates_total) break;
-        time_x_day_of_week = TimeDayOfWeek(Time[x] + TimeShiftMinutes * 60);
+        time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+    }
+
+    return (x - 1);
+}
+
+//+--------------------------------------------------------------------+
+//| Finds the quarter's starting bar number for any given bar number.  |
+//| n - bar number for which to find starting bar.                     |
+//+--------------------------------------------------------------------+
+int FindQuarterStart(const int n, const int rates_total)
+{
+    if (n >= rates_total) return -1;
+    int x = n;
+    int time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+    // These don't change:
+    int time_n_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60);
+    int time_n_month = TimeMonth(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60);
+    int time_n_day = TimeDay(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60);
+    bool first_day_of_quarter = false;
+    if (time_n_day == 1)
+    {
+        if ((time_n_month == 1) || (time_n_month == 4) || (time_n_month == 7) || (time_n_month == 10)) first_day_of_quarter = true;
+    }
+
+    // Condition should pass also if Append_Saturday_Sunday is on and it is Sunday or Saturday the 1st day of quarter.
+    while (((time_n_month - 1) / 3 == (TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) - 1) / 3) || ((_SaturdaySunday == Append_Saturday_Sunday) && ((time_x_day_of_week == 0) || ((time_n_day_of_week == 6) && (first_day_of_quarter)))))
+    {
+        // If quarter distance somehow becomes greater than 1, break.
+        int quarter_distance = (time_n_month - 1) / 3 - (TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) - 1) / 3;
+        if (quarter_distance < 0) quarter_distance = 4 + quarter_distance;
+        if (quarter_distance > 1) break;
+        // Check if Append_Saturday_Sunday is on and today is Saturday the 1st day of quarter. Despite it being current month, it should be skipped because it is appended to the previous quarter. Unless it is the sessionend day, which is the Saturday of the next quarter attached to this session.
+        if (_SaturdaySunday == Append_Saturday_Sunday)
+        {
+            bool x_first_day_of_quarter = false;
+            int time_x_day = TimeDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+            int time_x_month = TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+            if (time_x_day == 1)
+            {
+                if ((time_x_month == 1) || (time_x_month == 4) || (time_x_month == 7) || (time_x_month == 10)) x_first_day_of_quarter = true;
+            }        
+            if ((time_x_day_of_week == 6) && (x_first_day_of_quarter) && (!first_day_of_quarter)) break;
+        }
+        // Check if Ignore_Saturday_Sunday is on and today is Sunday or Saturday the 2nd or the 1st day of quarter. Despite it being current quarter, it should be skipped because it is ignored.
+        if (_SaturdaySunday == Ignore_Saturday_Sunday)
+        {
+            bool x_first_or_second_day_of_quarter = false;
+            int time_x_day = TimeDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+            int time_x_month = TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+            if ((time_x_day == 1) || (time_x_day == 2))
+            {
+                if ((time_x_month == 1) || (time_x_month == 4) || (time_x_month == 7) || (time_x_month == 10)) x_first_or_second_day_of_quarter = true;
+            }  
+            if (((time_x_day_of_week == 0) || (time_x_day_of_week == 6)) && (x_first_or_second_day_of_quarter)) break;
+        }
+        x++;
+        if (x >= rates_total) break;
+        time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+    }
+
+    return (x - 1);
+}
+
+//+---------------------------------------------------------------------+
+//| Finds the half-year's starting bar number for any given bar number. |
+//| n - bar number for which to find starting bar.                      |
+//+---------------------------------------------------------------------+
+int FindHalfyearStart(const int n, const int rates_total)
+{
+    if (n >= rates_total) return -1;
+    int x = n;
+    int time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+    // These don't change:
+    int time_n_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60);
+    int time_n_month = TimeMonth(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60);
+    int time_n_day = TimeDay(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60);
+    bool first_day_of_halfyear = false;
+    if (time_n_day == 1)
+    {
+        if ((time_n_month == 1) || (time_n_month == 7)) first_day_of_halfyear = true;
+    }
+
+    // Condition should pass also if Append_Saturday_Sunday is on and it is Sunday or Saturday the 1st day of half-year.
+    while (((time_n_month - 1) / 6 == (TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) - 1) / 6) || ((_SaturdaySunday == Append_Saturday_Sunday) && ((time_x_day_of_week == 0) || ((time_n_day_of_week == 6) && (first_day_of_halfyear)))))
+    {
+        // If half-year distance somehow becomes greater than 1, break.
+        int halfyear_distance = (time_n_month - 1) / 6 - (TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) - 1) / 6;
+        if (halfyear_distance < 0) halfyear_distance = 2 + halfyear_distance;
+        if (halfyear_distance > 1) break;
+        // Check if Append_Saturday_Sunday is on and today is Saturday the 1st day of half-year. Despite it being current half-year, it should be skipped because it is appended to the previous half-year. Unless it is the sessionend day, which is the Saturday of the next half-year attached to this session.
+        if (_SaturdaySunday == Append_Saturday_Sunday)
+        {
+            bool x_first_day_of_halfyear = false;
+            int time_x_day = TimeDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+            int time_x_month = TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+            if (time_x_day == 1)
+            {
+                if ((time_x_month == 1) || (time_x_month == 7)) x_first_day_of_halfyear = true;
+            }        
+            if ((time_x_day_of_week == 6) && (x_first_day_of_halfyear) && (!first_day_of_halfyear)) break;
+        }
+        // Check if Ignore_Saturday_Sunday is on and today is Sunday or Saturday the 2nd or the 1st day of half-year. Despite it being current half-year, it should be skipped because it is ignored.
+        if (_SaturdaySunday == Ignore_Saturday_Sunday)
+        {
+            bool x_first_or_second_day_of_halfyear = false;
+            int time_x_day = TimeDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+            int time_x_month = TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+            if ((time_x_day == 1) || (time_x_day == 2))
+            {
+                if ((time_x_month == 1) || (time_x_month == 7)) x_first_or_second_day_of_halfyear = true;
+            }  
+            if (((time_x_day_of_week == 0) || (time_x_day_of_week == 6)) && (x_first_or_second_day_of_halfyear)) break;
+        }
+        x++;
+        if (x >= rates_total) break;
+        time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+    }
+
+    return (x - 1);
+}
+
+//+----------------------------------------------------------------+
+//| Finds the year's starting bar number for any given bar number. |
+//| n - bar number for which to find starting bar.                 |
+//+----------------------------------------------------------------+
+int FindYearStart(const int n, const int rates_total)
+{
+    if (n >= rates_total) return -1;
+    int x = n;
+    int time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+    // These don't change:
+    int time_n_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60);
+    int time_n_day_of_year = TimeDayOfYear(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60);
+    int time_n_year = TimeYear(iTime(Symbol(), Period(), n) + TimeShiftMinutes * 60);
+
+    // Condition should pass also if Append_Saturday_Sunday is on and it is Sunday or Saturday the 1st day of year.
+    while ((time_n_year == TimeYear(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60)) || ((_SaturdaySunday == Append_Saturday_Sunday) && ((time_x_day_of_week == 0) || ((time_n_day_of_week == 6) && (time_n_day_of_year == 1)))))
+    {
+        // If year distance somehow becomes greater than 1, break.
+        int year_distance = time_n_year - TimeYear(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+        if (year_distance > 1) break;
+        // Check if Append_Saturday_Sunday is on and today is Saturday the 1st day of year. Despite it being current year, it should be skipped because it is appended to the previous year. Unless it is the sessionend day, which is the Saturday of the next year attached to this session.
+        if (_SaturdaySunday == Append_Saturday_Sunday)
+        {
+            if ((time_x_day_of_week == 6) && (TimeDayOfYear(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) == 1) && (time_n_day_of_year != 1)) break;
+        }
+        // Check if Ignore_Saturday_Sunday is on and today is Sunday or Saturday the 2nd or the 1st day of year. Despite it being current year, it should be skipped because it is ignored.
+        if (_SaturdaySunday == Ignore_Saturday_Sunday)
+        {
+            if (((time_x_day_of_week == 0) || (time_x_day_of_week == 6)) && ((TimeDayOfYear(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) == 1) || (TimeDayOfYear(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) == 2))) break;
+        }
+        x++;
+        if (x >= rates_total) break;
+        time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
     }
 
     return (x - 1);
@@ -790,15 +634,18 @@ int FindMonthStart(const datetime &Time[], const int n, const int rates_total)
 //+------------------------------------------------------------------+
 //| Finds the session's end bar by the session's date.               |
 //+------------------------------------------------------------------+
-int FindSessionEndByDate(const datetime &Time[], const datetime date, const int rates_total)
+int FindSessionEndByDate(const datetime date, const int rates_total)
 {
-    if (Session == Daily) return FindDayEndByDate(Time, date, rates_total);
-    else if (Session == Weekly) return FindWeekEndByDate(Time, date, rates_total);
-    else if (Session == Monthly) return FindMonthEndByDate(Time, date, rates_total);
-    else if (Session == Intraday)
+    if (_Session == Daily) return FindDayEndByDate(date, rates_total);
+    else if (_Session == Weekly) return FindWeekEndByDate(date, rates_total);
+    else if (_Session == Monthly) return FindMonthEndByDate(date, rates_total);
+    else if (_Session == Quarterly) return FindQuarterEndByDate(date, rates_total);
+    else if (_Session == Semiannual) return FindHalfyearEndByDate(date, rates_total);
+    else if (_Session == Annual) return FindYearEndByDate(date, rates_total);
+    else if (_Session == Intraday)
     {
         // A special case when Append_Saturday_Sunday is on and the date is on Sunday.
-        if ((SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(date + TimeShiftMinutes * 60) == 0))
+        if ((_SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(date + TimeShiftMinutes * 60) == 0))
         {
             // One of the intraday sessions should start at 00:00 or have end < start.
             for (int intraday_i = 0; intraday_i < IntradaySessionCount; intraday_i++)
@@ -809,13 +656,13 @@ int FindSessionEndByDate(const datetime &Time[], const datetime date, const int 
                     int x = 0;
                     int abs_day = TimeAbsoluteDay(date + TimeShiftMinutes * 60);
                     // TimeAbsoluteDay is used for cases when the given date is Dec 30 (#364) and the current date is Jan 1 (#1) for example.
-                    while ((x < rates_total) && (abs_day < TimeAbsoluteDay(Time[x] + TimeShiftMinutes * 60))) // It's Sunday.
+                    while ((x < rates_total) && (abs_day < TimeAbsoluteDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60))) // It's Sunday.
                     {
                         // On Monday.
-                        if (TimeAbsoluteDay(Time[x] + TimeShiftMinutes * 60) == abs_day + 1)
+                        if (TimeAbsoluteDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) == abs_day + 1)
                         {
                             // Inside the session.
-                            if (TimeHour(Time[x]) * 60 +  TimeMinute(Time[x]) < IDEndTime[intraday_i]) break;
+                            if (TimeHour(iTime(Symbol(), Period(), x)) * 60 +  TimeMinute(iTime(Symbol(), Period(), x)) < IDEndTime[intraday_i]) break;
                             // Break out earlier (on Monday's end bar) if working with 00:00-XX:XX session.
                             if (IDStartTime[intraday_i] == 0) break;
                         }
@@ -825,7 +672,7 @@ int FindSessionEndByDate(const datetime &Time[], const datetime date, const int 
                 }
             }
         }
-        return FindDayEndByDate(Time, date, rates_total);
+        return FindDayEndByDate(date, rates_total);
     }
 
     return -1;
@@ -834,17 +681,17 @@ int FindSessionEndByDate(const datetime &Time[], const datetime date, const int 
 //+------------------------------------------------------------------+
 //| Finds the day's end bar by the day's date.                       |
 //+------------------------------------------------------------------+
-int FindDayEndByDate(const datetime &Time[], const datetime date, const int rates_total)
+int FindDayEndByDate(const datetime date, const int rates_total)
 {
     int x = 0;
 
     // TimeAbsoluteDay is used for cases when the given date is Dec 30 (#364) and the current date is Jan 1 (#1) for example.
-    while ((x < rates_total) && (TimeAbsoluteDay(date + TimeShiftMinutes * 60) < TimeAbsoluteDay(Time[x] + TimeShiftMinutes * 60)))
+    while ((x < rates_total) && (TimeAbsoluteDay(date + TimeShiftMinutes * 60) < TimeAbsoluteDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60)))
     {
         // Check if Append_Saturday_Sunday is on and if the found end of the day is on Saturday and the given date is the previous Friday; or it is a Monday and the sought date is the previous Sunday.
-        if (SaturdaySunday == Append_Saturday_Sunday)
+        if (_SaturdaySunday == Append_Saturday_Sunday)
         {
-            if (((TimeDayOfWeek(Time[x] + TimeShiftMinutes * 60) == 6) || (TimeDayOfWeek(Time[x] + TimeShiftMinutes * 60) == 1)) && (TimeAbsoluteDay(Time[x] + TimeShiftMinutes * 60) - TimeAbsoluteDay(date + TimeShiftMinutes * 60) == 1)) break;
+            if (((TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) == 6) || (TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) == 1)) && (TimeAbsoluteDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) - TimeAbsoluteDay(date + TimeShiftMinutes * 60) == 1)) break;
         }
         x++;
     }
@@ -855,18 +702,18 @@ int FindDayEndByDate(const datetime &Time[], const datetime date, const int rate
 //+------------------------------------------------------------------+
 //| Finds the week's end bar by the week's date.                     |
 //+------------------------------------------------------------------+
-int FindWeekEndByDate(const datetime &Time[], const datetime date, const int rates_total)
+int FindWeekEndByDate(const datetime date, const int rates_total)
 {
     int x = 0;
 
-    int time_x_day_of_week = TimeDayOfWeek(Time[x] + TimeShiftMinutes * 60);
+    int time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
 
     // Condition should pass also if Append_Saturday_Sunday is on and it is Sunday; and also if Ignore_Saturday_Sunday is on and it is Saturday or Sunday.
-    while ((SameWeek(date + TimeShiftMinutes * 60, Time[x] + TimeShiftMinutes * 60) != true) || ((SaturdaySunday == Append_Saturday_Sunday) && (time_x_day_of_week == 0))  || ((SaturdaySunday == Ignore_Saturday_Sunday) && ((time_x_day_of_week == 0) || (time_x_day_of_week == 6))))
+    while ((SameWeek(date + TimeShiftMinutes * 60, iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) != true) || ((_SaturdaySunday == Append_Saturday_Sunday) && (time_x_day_of_week == 0)) || ((_SaturdaySunday == Ignore_Saturday_Sunday) && ((time_x_day_of_week == 0) || (time_x_day_of_week == 6))))
     {
         x++;
         if (x >= rates_total) break;
-        time_x_day_of_week = TimeDayOfWeek(Time[x] + TimeShiftMinutes * 60);
+        time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
     }
 
     return x;
@@ -875,27 +722,134 @@ int FindWeekEndByDate(const datetime &Time[], const datetime date, const int rat
 //+------------------------------------------------------------------+
 //| Finds the month's end bar by the month's date.                   |
 //+------------------------------------------------------------------+
-int FindMonthEndByDate(const datetime &Time[], const datetime date, const int rates_total)
+int FindMonthEndByDate(const datetime date, const int rates_total)
 {
     int x = 0;
 
-    int time_x_day_of_week = TimeDayOfWeek(Time[x] + TimeShiftMinutes * 60);
+    int time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
 
     // Condition should pass also if Append_Saturday_Sunday is on and it is Sunday; and also if Ignore_Saturday_Sunday is on and it is Saturday or Sunday.
-    while ((SameMonth(date + TimeShiftMinutes * 60, Time[x] + TimeShiftMinutes * 60) != true) || ((SaturdaySunday == Append_Saturday_Sunday) && (time_x_day_of_week == 0))  || ((SaturdaySunday == Ignore_Saturday_Sunday) && ((time_x_day_of_week == 0) || (time_x_day_of_week == 6))))
+    while ((SameMonth(date + TimeShiftMinutes * 60, iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) != true) || ((_SaturdaySunday == Append_Saturday_Sunday) && (time_x_day_of_week == 0)) || ((_SaturdaySunday == Ignore_Saturday_Sunday) && ((time_x_day_of_week == 0) || (time_x_day_of_week == 6))))
     {
         // Check if Append_Saturday_Sunday is on.
-        if (SaturdaySunday == Append_Saturday_Sunday)
+        if (_SaturdaySunday == Append_Saturday_Sunday)
         {
             // Today is Saturday the 1st day of the next month. Despite it being in a next month, it should be appended to the current month.
-            if ((time_x_day_of_week == 6) && (TimeDay(Time[x] + TimeShiftMinutes * 60) == 1) && (TimeYear(Time[x] + TimeShiftMinutes * 60) * 12 + TimeMonth(Time[x] + TimeShiftMinutes * 60) - TimeYear(date + TimeShiftMinutes * 60) * 12 - TimeMonth(date + TimeShiftMinutes * 60) == 1)) break;
+            if ((time_x_day_of_week == 6) && (TimeDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) == 1) && (TimeYear(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) * 12 + TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) - TimeYear(date + TimeShiftMinutes * 60) * 12 - TimeMonth(date + TimeShiftMinutes * 60) == 1)) break;
             // Given date is Sunday of a previous month. It was rejected in the previous month and should be appended to beginning of this one.
             // Works because date here can be only the end or the beginning of the month.
-            if ((TimeDayOfWeek(date + TimeShiftMinutes * 60) == 0) && (TimeYear(Time[x] + TimeShiftMinutes * 60) * 12 + TimeMonth(Time[x] + TimeShiftMinutes * 60) - TimeYear(date + TimeShiftMinutes * 60) * 12 - TimeMonth(date + TimeShiftMinutes * 60) == 1)) break;
+            if ((TimeDayOfWeek(date + TimeShiftMinutes * 60) == 0) && (TimeYear(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) * 12 + TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) - TimeYear(date + TimeShiftMinutes * 60) * 12 - TimeMonth(date + TimeShiftMinutes * 60) == 1)) break;
         }
         x++;
         if (x >= rates_total) break;
-        time_x_day_of_week = TimeDayOfWeek(Time[x] + TimeShiftMinutes * 60);
+        time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+    }
+
+    return x;
+}
+
+//+------------------------------------------------------------------+
+//| Finds the quarter's end bar by the quarter's date.               |
+//+------------------------------------------------------------------+
+int FindQuarterEndByDate(const datetime date, const int rates_total)
+{
+    int x = 0;
+
+    int time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+
+    // Condition should pass also if Append_Saturday_Sunday is on and it is Sunday; and also if Ignore_Saturday_Sunday is on and it is Saturday or Sunday.
+    while ((SameQuarter(date + TimeShiftMinutes * 60, iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) != true) || ((_SaturdaySunday == Append_Saturday_Sunday) && (time_x_day_of_week == 0)) || ((_SaturdaySunday == Ignore_Saturday_Sunday) && ((time_x_day_of_week == 0) || (time_x_day_of_week == 6))))
+    {
+        // Check if Append_Saturday_Sunday is on.
+        if (_SaturdaySunday == Append_Saturday_Sunday)
+        {
+            bool x_first_day_of_quarter = false;
+            int time_x_day = TimeDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+            int time_x_month = TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+            if (time_x_day == 1)
+            {
+                if ((time_x_month == 1) || (time_x_month == 4) || (time_x_month == 7) || (time_x_month == 10)) x_first_day_of_quarter = true;
+            }    
+            int quarter_distance = (TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) - 1) / 3 - (TimeMonth(date + TimeShiftMinutes * 60) - 1) / 3;
+            if (quarter_distance < 0) quarter_distance = 4 + quarter_distance;
+            // Today is Saturday the 1st day of the next quarter. Despite it being in a next quarter, it should be appended to the current quarter.
+            if ((time_x_day_of_week == 6) && (x_first_day_of_quarter) && (quarter_distance == 1)) break;
+            // Given date is Sunday of a previous quarter. It was rejected in the previous quarter and should be appended to beginning of this one.
+            // Works because date here can be only the end or the beginning of the quarter.
+            if ((TimeDayOfWeek(date + TimeShiftMinutes * 60) == 0) && (quarter_distance == 1)) break;
+        }
+        x++;
+        if (x >= rates_total) break;
+        time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+    }
+
+    return x;
+}
+
+//+------------------------------------------------------------------+
+//| Finds the half-year's end bar by the half-year's date.           |
+//+------------------------------------------------------------------+
+int FindHalfyearEndByDate(const datetime date, const int rates_total)
+{
+    int x = 0;
+
+    int time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+
+    // Condition should pass also if Append_Saturday_Sunday is on and it is Sunday; and also if Ignore_Saturday_Sunday is on and it is Saturday or Sunday.
+    while ((SameHalfyear(date + TimeShiftMinutes * 60, iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) != true) || ((_SaturdaySunday == Append_Saturday_Sunday) && (time_x_day_of_week == 0)) || ((_SaturdaySunday == Ignore_Saturday_Sunday) && ((time_x_day_of_week == 0) || (time_x_day_of_week == 6))))
+    {
+        // Check if Append_Saturday_Sunday is on.
+        if (_SaturdaySunday == Append_Saturday_Sunday)
+        {
+            bool x_first_day_of_halfyear = false;
+            int time_x_day = TimeDay(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+            int time_x_month = TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+            if (time_x_day == 1)
+            {
+                if ((time_x_month == 1) || (time_x_month == 7)) x_first_day_of_halfyear = true;
+            }    
+            int halfyear_distance = (TimeMonth(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) - 1) / 6 - (TimeMonth(date + TimeShiftMinutes * 60) - 1) / 6;
+            if (halfyear_distance < 0) halfyear_distance = 2 + halfyear_distance;
+            // Today is Saturday the 1st day of the next half-year. Despite it being in a next half-year, it should be appended to the current half-year.
+            if ((time_x_day_of_week == 6) && (x_first_day_of_halfyear) && (halfyear_distance == 1)) break;
+            // Given date is Sunday of a previous half-year. It was rejected in the previous half-year and should be appended to beginning of this one.
+            // Works because date here can be only the end or the beginning of the half-year.
+            if ((TimeDayOfWeek(date + TimeShiftMinutes * 60) == 0) && (halfyear_distance == 1)) break;
+        }
+        x++;
+        if (x >= rates_total) break;
+        time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+    }
+
+    return x;
+}
+
+//+------------------------------------------------------------------+
+//| Finds the year's end bar by the year's date.                     |
+//+------------------------------------------------------------------+
+int FindYearEndByDate(const datetime date, const int rates_total)
+{
+    int x = 0;
+
+    int time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+
+    // Condition should pass also if Append_Saturday_Sunday is on and it is Sunday; and also if Ignore_Saturday_Sunday is on and it is Saturday or Sunday.
+    while ((SameYear(date + TimeShiftMinutes * 60, iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) != true) || ((_SaturdaySunday == Append_Saturday_Sunday) && (time_x_day_of_week == 0))  || ((_SaturdaySunday == Ignore_Saturday_Sunday) && ((time_x_day_of_week == 0) || (time_x_day_of_week == 6))))
+    {
+        // Check if Append_Saturday_Sunday is on.
+        if (_SaturdaySunday == Append_Saturday_Sunday)
+        {
+            int time_x_day_of_year = TimeDayOfYear(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
+            int year_distance = TimeYear(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60) - TimeYear(date + TimeShiftMinutes * 60);
+            // Today is Saturday the 1st day of the next year. Despite it being in a next year, it should be appended to the current year.
+            if ((time_x_day_of_week == 6) && (time_x_day_of_year == 1) && (year_distance == 1)) break;
+            // Given date is Sunday of a previous year. It was rejected in the previous year and should be appended to beginning of this one.
+            // Works because date here can be only the end or the beginning of the year.
+            if ((TimeDayOfWeek(date + TimeShiftMinutes * 60) == 0) && (year_distance == 1)) break;
+        }
+        x++;
+        if (x >= rates_total) break;
+        time_x_day_of_week = TimeDayOfWeek(iTime(Symbol(), Period(), x) + TimeShiftMinutes * 60);
     }
 
     return x;
@@ -939,19 +893,46 @@ int SameMonth(const datetime date1, const datetime date2)
 }
 
 //+------------------------------------------------------------------+
+//| Check if two dates are in the same quarter.                      |
+//+------------------------------------------------------------------+
+int SameQuarter(const datetime date1, const datetime date2)
+{
+    if (((TimeMonth(date1) - 1) / 3 == (TimeMonth(date2) - 1) / 3) && (TimeYear(date1) == TimeYear(date2))) return true;
+    return false;
+}
+
+//+------------------------------------------------------------------+
+//| Check if two dates are in the same half-year.                    |
+//+------------------------------------------------------------------+
+int SameHalfyear(const datetime date1, const datetime date2)
+{
+    if (((TimeMonth(date1) - 1) / 6 == (TimeMonth(date2) - 1) / 6) && (TimeYear(date1) == TimeYear(date2))) return true;
+    return false;
+}
+
+//+------------------------------------------------------------------+
+//| Check if two dates are in the same year.                    |
+//+------------------------------------------------------------------+
+int SameYear(const datetime date1, const datetime date2)
+{
+    if (TimeYear(date1) == TimeYear(date2)) return true;
+    return false;
+}
+
+//+------------------------------------------------------------------+
 //| Puts a dot (rectangle) at a given position and color.            |
 //| price and time are coordinates.                                  |
 //| range is for the second coordinate.                              |
 //| bar is to determine the color of the dot.                        |
 //| Returns inverted end time only for the RightToLeft session.      |
 //+------------------------------------------------------------------+
-datetime PutDot(const double price, const int start_bar, const int range, const int bar, const datetime &Time[], string rectangle_prefix = "", datetime converted_time = 0)
+datetime PutDot(const double price, const int start_bar, const int range, const int bar, string rectangle_prefix = "", datetime converted_time = 0)
 {
     double divisor, color_shift;
     color colour = -1;
 
     // All dots are with the same date/time for a given origin bar, but with a different price.
-    string LastNameStart = " " + TimeToString(Time[bar + start_bar]) + " ";
+    string LastNameStart = " " + TimeToString(iTime(Symbol(), Period(), bar + start_bar)) + " ";
     string LastName = LastNameStart + DoubleToString(price, _Digits);
 
     if (ColorBullBear) colour = CalculateProperColor();
@@ -985,26 +966,26 @@ datetime PutDot(const double price, const int start_bar, const int range, const 
     {
         // Check if we have started a new right-most session, so the previous one should be cleaned up.
         static datetime prev_time_start_bar = 0;
-        if ((Time[start_bar] != prev_time_start_bar) && (prev_time_start_bar != 0)) // New right-most session arrived - recalculate everything.
+        if ((iTime(Symbol(), Period(), start_bar) != prev_time_start_bar) && (prev_time_start_bar != 0)) // New right-most session arrived - recalculate everything.
         {
             NeedToRestartDrawing = true;
         }
-        prev_time_start_bar = Time[start_bar];
+        prev_time_start_bar = iTime(Symbol(), Period(), start_bar);
 
         // Find the time:
         int x = -1;
         for (int i = range + 1; i > 0; i--) // + 1 to get a bit "lefter" time in converted_time, and actual dot's time into prev_time.
         {
             prev_time = converted_time;
-            if (converted_time == Time[0]) // First time stepped into existing candles.
+            if (converted_time == iTime(Symbol(), Period(), 0)) // First time stepped into existing candles.
             {
                 x = i + 1; // Remember the position.
-                converted_time = Time[1]; // Move further.
+                converted_time = iTime(Symbol(), Period(), 1); // Move further.
             }
-            else if (converted_time < Time[0])
+            else if (converted_time < iTime(Symbol(), Period(), 0))
             {
                 if (x == -1) x = iBarShift(Symbol(), Period(), converted_time) + i + 1;
-                converted_time = Time[x - i]; // While inside the existing candles, use existing Time for candles.
+                converted_time = iTime(Symbol(), Period(), x - i); // While inside the existing candles, use existing Time for candles.
             }
             else converted_time -= PeriodSeconds(); // While beyond the current candle, subtract fixed time periods to move left on the time scale.
         }
@@ -1013,9 +994,9 @@ datetime PutDot(const double price, const int start_bar, const int range, const 
     }
     else
     {
-        if (start_bar - (range + 1) < 0) time_end = Time[0] + PeriodSeconds(); // Protection from 'Array out of range' error.
-        else time_end = Time[start_bar - (range + 1)];
-        time_start = Time[start_bar - range];
+        if (start_bar - (range + 1) < 0) time_end = iTime(Symbol(), Period(), 0) + PeriodSeconds(); // Protection from 'Array out of range' error.
+        else time_end = iTime(Symbol(), Period(), start_bar - (range + 1));
+        time_start = iTime(Symbol(), Period(), start_bar - range);
     }
 
     if (ObjectFind(0, rectangle_prefix + "MP" + Suffix + LastName) >= 0) // Need to move the rectangle.
@@ -1142,6 +1123,11 @@ void ObjectCleanup(string rectangle_prefix = "")
     {
         DeleteArrowsByPrefix(rectangle_prefix);
     }
+    if (ShowTPOCounts)
+    {
+        ObjectsDeleteAll(0, rectangle_prefix + "TPOCA" + Suffix, 0, OBJ_TEXT);
+        ObjectsDeleteAll(0, rectangle_prefix + "TPOCB" + Suffix, 0, OBJ_TEXT);
+    }
 }
 
 //+------------------------------------------------------------------+
@@ -1225,26 +1211,27 @@ bool CheckIntradaySession(const bool enable, const string start_time, const stri
 //| i - session number with 0 being the oldest one.                  |
 //| Returns true on success, false - on failure.                     |
 //+------------------------------------------------------------------+
-bool ProcessSession(const int sessionstart, const int sessionend, const int i, const double& High[], const double& Low[], const datetime& Time[], const int rates_total, CRectangleMP* rectangle = NULL)
+bool ProcessSession(const int sessionstart, const int sessionend, const int i, const int rates_total, CRectangleMP* rectangle = NULL)
 {
     string rectangle_prefix = ""; // Only for rectangle sessions.
 
     if (sessionstart >= rates_total) return false; // Data not yet ready.
+    if (onetick == 0) return false; // onetick cannot be zero.
 
     double SessionMax = DBL_MIN, SessionMin = DBL_MAX;
 
     // Find the session's high and low.
     for (int bar = sessionstart; bar >= sessionend; bar--)
     {
-        if (High[bar] > SessionMax) SessionMax = High[bar];
-        if (Low[bar] < SessionMin) SessionMin = Low[bar];
+        if (iHigh(Symbol(), Period(), bar) > SessionMax) SessionMax = iHigh(Symbol(), Period(), bar);
+        if (iLow(Symbol(), Period(), bar) < SessionMin) SessionMin = iLow(Symbol(), Period(), bar);
     }
     SessionMax = NormalizeDouble(SessionMax, DigitsM);
     SessionMin = NormalizeDouble(SessionMin, DigitsM);
 
     int session_counter = i;
 
-    if (Session == Rectangle)
+    if (_Session == Rectangle)
     {
         rectangle_prefix = rectangle.name + "_";
         if (SessionMax > rectangle.RectanglePriceMax) SessionMax = NormalizeDouble(rectangle.RectanglePriceMax, DigitsM);
@@ -1252,12 +1239,12 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
     }
     else
     {
-        // Find Time[sessionstart] among RememberSessionStart[].
+        // Find iTime(Symbol(), Period(), sessionstart) among RememberSessionStart[].
         bool need_to_increment = true;
 
         for (int j = 0; j < SessionsNumber; j++)
         {
-            if (RememberSessionStart[j] == Time[sessionstart])
+            if (RememberSessionStart[j] == iTime(Symbol(), Period(), sessionstart))
             {
                 need_to_increment = false;
                 session_counter = j; // Real number of the session.
@@ -1283,19 +1270,19 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
 
     RememberSessionMax[session_counter] = SessionMax;
     RememberSessionMin[session_counter] = SessionMin;
-    RememberSessionStart[session_counter] = Time[sessionstart];
+    RememberSessionStart[session_counter] = iTime(Symbol(), Period(), sessionstart);
     RememberSessionSuffix[session_counter] = Suffix;
-    RememberSessionEnd[session_counter] = Time[sessionend]; // Used only for Arrows.
+    RememberSessionEnd[session_counter] = iTime(Symbol(), Period(), sessionend); // Used only for Arrows.
 
     // Used to make sure that SessionMax increments only by 'onetick' increments.
     // This is needed only when updating the latest trading session and PointMultiplier_calculated > 1.
     static double PreviousSessionMax = DBL_MIN;
     static datetime PreviousSessionStartTime = 0;
     // Reset PreviousSessionMax when a new session becomes the 'latest one'.
-    if (Time[sessionstart] > PreviousSessionStartTime)
+    if (iTime(Symbol(), Period(), sessionstart) > PreviousSessionStartTime)
     {
         PreviousSessionMax = DBL_MIN;
-        PreviousSessionStartTime = Time[sessionstart];
+        PreviousSessionStartTime = iTime(Symbol(), Period(), sessionstart);
     }
     if ((FirstRunDone) && (i == _SessionsToCount - 1) && (PointMultiplier_calculated > 1)) // Updating the latest trading session.
     {
@@ -1335,7 +1322,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
 
     // Right to left for the final session:
     // 1. Get rightmost time.
-    // 2a. If it <= Time[0] - use normal bar-walking, else:
+    // 2a. If it <= iTime(Symbol(), Period(), 0) - use normal bar-walking, else:
     // 2b. To "move" to the left - subtract PeriodSeconds().
     // 3. Draw everything based on that Time.
     // 4. Redraw everything every time the rightmost time changes.
@@ -1345,11 +1332,11 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
     datetime converted_time = 0;
     datetime converted_end_time = 0;
     datetime min_converted_end_time = UINT_MAX;
-    if ((RightToLeft) && ((sessionend == 0) || (Session == Rectangle)))
+    if ((RightToLeft) && ((sessionend == 0) || (_Session == Rectangle)))
     {
         int dummy_subwindow;
         double dummy_price;
-        if (Session == Rectangle) converted_time = rectangle.RectangleTimeMax;
+        if (_Session == Rectangle) converted_time = rectangle.RectangleTimeMax;
         else ChartXYToTimePrice(0, (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS), 0, dummy_subwindow, converted_time, dummy_price);
     }
 
@@ -1365,7 +1352,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
         for (int bar = sessionstart; bar >= sessionend; bar--)
         {
             // Price is encountered in the given bar.
-            if ((price >= Low[bar]) && (price <= High[bar]))
+            if ((price >= iLow(Symbol(), Period(), bar)) && (price <= iHigh(Symbol(), Period(), bar)))
             {
                 // Update maximum distance from session's start to the found bar (needed for Median).
                 // Using the center-most Median if there are more than one.
@@ -1400,11 +1387,11 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
                     }
 
                     // Draws rectangle.
-                    if (!RightToLeft) PutDot(price, sessionstart, range, bar - sessionstart, Time, rectangle_prefix);
+                    if (!RightToLeft) PutDot(price, sessionstart, range, bar - sessionstart, rectangle_prefix);
                     // Inverted drawing.
                     else
                     {
-                        converted_end_time = PutDot(price, sessionstart, range, bar - sessionstart, Time, rectangle_prefix, converted_time);
+                        converted_end_time = PutDot(price, sessionstart, range, bar - sessionstart, rectangle_prefix, converted_time);
                         if (converted_end_time < min_converted_end_time) min_converted_end_time = converted_end_time; // Find the leftmost time to use for the left border of the value area.
                     }
                 }
@@ -1419,8 +1406,8 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
         // Single print marking is due at this price.
         if (ShowSinglePrint)
         {
-            if (range == 1) PutSinglePrintMark(price, sessionstart, rectangle_prefix, Time);
-            else if (range > 1) RemoveSinglePrintMark(price, sessionstart, rectangle_prefix, Time); // Remove single print max if it exists.
+            if (range == 1) PutSinglePrintMark(price, sessionstart, rectangle_prefix);
+            else if (range > 1) RemoveSinglePrintMark(price, sessionstart, rectangle_prefix); // Remove single print max if it exists.
         }
         
         if (SinglePrintRays)
@@ -1436,7 +1423,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
     if (SinglePrintRays)
     {
         color spr_color = SinglePrintColor; // Normal ray color.
-        if ((HideRaysFromInvisibleSessions) && (iTime(Symbol(), Period(), (int)ChartGetInteger(ChartID(), CHART_FIRST_VISIBLE_BAR)) >= Time[sessionstart])) spr_color = clrNONE; // Hide rays if behind the screen.
+        if ((HideRaysFromInvisibleSessions) && (iTime(Symbol(), Period(), (int)ChartGetInteger(ChartID(), CHART_FIRST_VISIBLE_BAR)) >= iTime(Symbol(), Period(), sessionstart))) spr_color = clrNONE; // Hide rays if behind the screen.
 
         for (double price = SessionMax; price >= SessionMin; price -= onetick)
         {
@@ -1446,46 +1433,46 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
             {
                 if (price == SessionMax) // Top of the session.
                 {
-                    PutSinglePrintRay(price, sessionstart, rectangle_prefix, Time, spr_color);
+                    PutSinglePrintRay(price, sessionstart, rectangle_prefix, spr_color);
                 }
                 else
                 {
                     if (SinglePrintTracking_array[index + 1] == false) // Above is a non-single print.
                     {
-                        PutSinglePrintRay(price, sessionstart, rectangle_prefix, Time, spr_color);
+                        PutSinglePrintRay(price, sessionstart, rectangle_prefix, spr_color);
                     }
                     else
                     {
-                        RemoveSinglePrintRay(price, sessionstart, rectangle_prefix, Time);
+                        RemoveSinglePrintRay(price, sessionstart, rectangle_prefix);
                     }
                 }
                 if (price == SessionMin) // Bottom of the session.
                 {
-                    PutSinglePrintRay(price - onetick, sessionstart, rectangle_prefix, Time, spr_color);
+                    PutSinglePrintRay(price - onetick, sessionstart, rectangle_prefix, spr_color);
                 }
                 else
                 {
                     if (SinglePrintTracking_array[index - 1] == false) // Below is a non-single print.
                     {
-                        PutSinglePrintRay(price - onetick, sessionstart, rectangle_prefix, Time, spr_color);
+                        PutSinglePrintRay(price - onetick, sessionstart, rectangle_prefix, spr_color);
                     }
                     else
                     {
-                        RemoveSinglePrintRay(price - onetick, sessionstart, rectangle_prefix, Time);
+                        RemoveSinglePrintRay(price - onetick, sessionstart, rectangle_prefix);
                     }
                 }
             }
             else
             {
                 // Attempt to remove a horizontal line below the "potentially no longer existing" single print mark.
-                RemoveSinglePrintRay(price - onetick, sessionstart, rectangle_prefix, Time);
+                RemoveSinglePrintRay(price - onetick, sessionstart, rectangle_prefix);
             }
         }
     }
     
-    if ((EnableDevelopingPOC) || (EnableDevelopingVAHVAL)) CalculateDevelopingPOCVAHVAL(sessionstart, sessionend, High, Low, rectangle); // Developing POC if necessary.
+    if ((EnableDevelopingPOC) || (EnableDevelopingVAHVAL)) CalculateDevelopingPOCVAHVAL(sessionstart, sessionend, rectangle); // Developing POC if necessary.
     
-    // Calculate amount of TPO's in the Value Area.
+    // Calculate the number of TPO's in the Value Area.
     int ValueControlTPO = (int)((double)TotalTPO * ValueAreaPercentage_double);
     // Start with the TPO's of the Median.
     int index = (int)((PriceOfMaxRange - SessionMin) / onetick);
@@ -1518,21 +1505,21 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
             break;
         }
     }
-    string LastName = " " + TimeToString(Time[sessionstart]);
+    string LastName = " " + TimeToString(iTime(Symbol(), Period(), sessionstart));
     // Delete old Median.
     ObjectDelete(0, rectangle_prefix + "Median" + Suffix + LastName);
     // Draw a new one.
     index = (int)MathMax(sessionstart - MaxRange - 1, 0);
     datetime time_start, time_end;
-    if ((RightToLeft) && ((sessionend == 0) || (Session == Rectangle)))
+    if ((RightToLeft) && ((sessionend == 0) || (_Session == Rectangle)))
     {
         time_end = min_converted_end_time;
         time_start = converted_time;
     }
     else
     {
-        time_end = Time[index];
-        time_start = Time[sessionstart];
+        time_end = iTime(Symbol(), Period(), index);
+        time_start = iTime(Symbol(), Period(), sessionstart);
     }
     ObjectCreate(0, rectangle_prefix + "Median" + Suffix + LastName, OBJ_TREND, 0, time_start, PriceOfMaxRange, time_end, PriceOfMaxRange);
     color mc = MedianColor;
@@ -1553,6 +1540,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
     ObjectSetInteger(0, rectangle_prefix + "Median" + Suffix + LastName, OBJPROP_SELECTABLE, false);
     ObjectSetInteger(0, rectangle_prefix + "Median" + Suffix + LastName, OBJPROP_HIDDEN, true);
     ObjectSetInteger(0, rectangle_prefix + "Median" + Suffix + LastName, OBJPROP_RAY, false);
+    ObjectSetString(0, rectangle_prefix + "Median" + Suffix + LastName, OBJPROP_TOOLTIP, "Median (POC)");
 
     // Delete old Value Area Sides.
     ObjectDelete(0, rectangle_prefix + "VA_LeftSide" + Suffix + LastName);
@@ -1565,6 +1553,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
     ObjectSetInteger(0, rectangle_prefix + "VA_LeftSide" + Suffix + LastName, OBJPROP_SELECTABLE, false);
     ObjectSetInteger(0, rectangle_prefix + "VA_LeftSide" + Suffix + LastName, OBJPROP_HIDDEN, true);
     ObjectSetInteger(0, rectangle_prefix + "VA_LeftSide" + Suffix + LastName, OBJPROP_RAY, false);
+    ObjectSetString(0, rectangle_prefix + "VA_LeftSide" + Suffix + LastName, OBJPROP_TOOLTIP, "Value Area Left Side");
     ObjectDelete(0, rectangle_prefix + "VA_RightSide" + Suffix + LastName);
     // Draw a new one.
     ObjectCreate(0, rectangle_prefix + "VA_RightSide" + Suffix + LastName, OBJ_TREND, 0, time_end, PriceOfMaxRange + up_offset * onetick, time_end, PriceOfMaxRange - down_offset * onetick + onetick);
@@ -1575,6 +1564,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
     ObjectSetInteger(0, rectangle_prefix + "VA_RightSide" + Suffix + LastName, OBJPROP_SELECTABLE, false);
     ObjectSetInteger(0, rectangle_prefix + "VA_RightSide" + Suffix + LastName, OBJPROP_HIDDEN, true);
     ObjectSetInteger(0, rectangle_prefix + "VA_RightSide" + Suffix + LastName, OBJPROP_RAY, false);
+    ObjectSetString(0, rectangle_prefix + "VA_RightSide" + Suffix + LastName, OBJPROP_TOOLTIP, "Value Area Right Side");
 
     // Delete old Value Area Top and Bottom.
     ObjectDelete(0, rectangle_prefix + "VA_Top" + Suffix + LastName);
@@ -1587,6 +1577,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
     ObjectSetInteger(0, rectangle_prefix + "VA_Top" + Suffix + LastName, OBJPROP_SELECTABLE, false);
     ObjectSetInteger(0, rectangle_prefix + "VA_Top" + Suffix + LastName, OBJPROP_HIDDEN, true);
     ObjectSetInteger(0, rectangle_prefix + "VA_Top" + Suffix + LastName, OBJPROP_RAY, false);
+    ObjectSetString(0, rectangle_prefix + "VA_Top" + Suffix + LastName, OBJPROP_TOOLTIP, "Value Area Top");
     ObjectDelete(0, rectangle_prefix + "VA_Bottom" + Suffix + LastName);
     // Draw a new one.
     ObjectCreate(0, rectangle_prefix + "VA_Bottom" + Suffix + LastName, OBJ_TREND, 0, time_start, PriceOfMaxRange - down_offset * onetick + onetick, time_end, PriceOfMaxRange - down_offset * onetick + onetick); // Adding onetick to put the value area bottom border to its real location as PriceOfMaxRange - down_offset * onetick puts it just below the bottom TPO, which itself is 1 tick deep.
@@ -1597,17 +1588,19 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
     ObjectSetInteger(0, rectangle_prefix + "VA_Bottom" + Suffix + LastName, OBJPROP_SELECTABLE, false);
     ObjectSetInteger(0, rectangle_prefix + "VA_Bottom" + Suffix + LastName, OBJPROP_HIDDEN, true);
     ObjectSetInteger(0, rectangle_prefix + "VA_Bottom" + Suffix + LastName, OBJPROP_RAY, false);
+    ObjectSetString(0, rectangle_prefix + "VA_Bottom" + Suffix + LastName, OBJPROP_TOOLTIP, "Value Area Bottom");
 
     // VAH, VAL, and POC printout.
     if (ShowKeyValues)
     {
+        datetime value_time = time_start;
         ENUM_ANCHOR_POINT anchor_poc = ANCHOR_RIGHT, anchor_va = ANCHOR_RIGHT;
-        if ((RightToLeft) && ((sessionend == 0) || (Session == Rectangle)))
+        if ((RightToLeft) && ((sessionend == 0) || (_Session == Rectangle)))
         {
-            time_start = time_end; // Inverting label display position.
+            value_time = time_end; // Inverting label display position.
             // Value Area printout position.
-            if (((Session != Rectangle) && ((ShowValueAreaRays == All) || (ShowValueAreaRays == Current) || (ShowValueAreaRays == PreviousCurrent))) // For non-rectangle sessions, it is already known that it is the current session, so just check if current session uses rays.
-                    || ((Session == Rectangle) && ( // For rectangles, need to check which session is it and whether it has rays.
+            if (((_Session != Rectangle) && ((ShowValueAreaRays == All) || (ShowValueAreaRays == Current) || (ShowValueAreaRays == PreviousCurrent))) // For non-rectangle sessions, it is already known that it is the current session, so just check if current session uses rays.
+                    || ((_Session == Rectangle) && ( // For rectangles, need to check which session is it and whether it has rays.
                             (((ShowValueAreaRays == AllPrevious) && (SessionsNumber - session_counter >= 2)) ||
                              (((ShowValueAreaRays == Previous) || (ShowValueAreaRays == PreviousCurrent)) && (SessionsNumber - session_counter == 2)) ||
                              (((ShowValueAreaRays == Current) || (ShowValueAreaRays == PreviousCurrent)) && (SessionsNumber - session_counter == 1)) ||
@@ -1617,8 +1610,8 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
                 anchor_va = ANCHOR_RIGHT_LOWER;
             }
             // Median printout position.
-            if (((Session != Rectangle) && ((ShowMedianRays == All) || (ShowMedianRays == Current) || (ShowMedianRays == PreviousCurrent))) // For non-rectangle sessions, it is already known that it is the current session, so just check if current session uses rays.
-                    || ((Session == Rectangle) && ( // For rectangles, need to check which session is it and whether it has rays.
+            if (((_Session != Rectangle) && ((ShowMedianRays == All) || (ShowMedianRays == Current) || (ShowMedianRays == PreviousCurrent))) // For non-rectangle sessions, it is already known that it is the current session, so just check if current session uses rays.
+                    || ((_Session == Rectangle) && ( // For rectangles, need to check which session is it and whether it has rays.
                             (((ShowMedianRays == AllPrevious) && (SessionsNumber - session_counter >= 2)) ||
                              (((ShowMedianRays == Previous) || (ShowMedianRays == PreviousCurrent)) && (SessionsNumber - session_counter == 2)) ||
                              (((ShowMedianRays == Current) || (ShowMedianRays == PreviousCurrent)) && (SessionsNumber - session_counter == 1)) ||
@@ -1628,11 +1621,40 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
                 anchor_poc = ANCHOR_RIGHT_LOWER;
             }
         }
-        ValuePrintOut(rectangle_prefix + "VAH" + Suffix + LastName, time_start, PriceOfMaxRange + up_offset * onetick, anchor_va);
-        ValuePrintOut(rectangle_prefix + "VAL" + Suffix + LastName, time_start, PriceOfMaxRange - down_offset * onetick, anchor_va);
-        ValuePrintOut(rectangle_prefix + "POC" + Suffix + LastName, time_start, PriceOfMaxRange, anchor_poc);
+        ValuePrintOut(rectangle_prefix + "VAH" + Suffix + LastName, value_time, PriceOfMaxRange + up_offset * onetick, "Value Area High Price: " + DoubleToString(PriceOfMaxRange + up_offset * onetick, _Digits), anchor_va);
+        ValuePrintOut(rectangle_prefix + "VAL" + Suffix + LastName, value_time, PriceOfMaxRange - down_offset * onetick, "Value Area Low Price: " + DoubleToString(PriceOfMaxRange - down_offset * onetick, _Digits), anchor_va);
+        ValuePrintOut(rectangle_prefix + "POC" + Suffix + LastName, value_time, PriceOfMaxRange, "POC (Median) Price: " + DoubleToString(PriceOfMaxRange, _Digits), anchor_poc);
     }
 
+    // TPO counts for the number of TPOs above the POC and below the POC.
+    if (ShowTPOCounts)
+    {
+        // Go through the price levels above and below median/POC to calculate TPO counts above and below it.
+        // Above:
+        int TPOCountAbove = 0;
+        for (double abovePrice = PriceOfMaxRange + onetick; abovePrice <= SessionMax; abovePrice += onetick)
+        {
+            index = (int)MathRound((abovePrice - SessionMin) / onetick);
+            TPOCountAbove += TPOperPrice[index];
+        }
+        int TPOCountBelow = 0;
+        for (double belowPrice = PriceOfMaxRange - onetick; belowPrice >= SessionMin; belowPrice -= onetick)
+        {
+            index = (int)MathRound((belowPrice - SessionMin) / onetick);
+            TPOCountBelow += TPOperPrice[index];
+        }
+        ENUM_ANCHOR_POINT anchor_tpoca = ANCHOR_LEFT_LOWER, anchor_tpocb = ANCHOR_LEFT_UPPER;
+        datetime value_time = time_end;
+        if ((RightToLeft) && ((sessionend == 0) || (_Session == Rectangle)))
+        {
+            value_time = time_start; // Inverting label display position.
+            anchor_tpoca = ANCHOR_RIGHT_LOWER;
+            anchor_tpocb = ANCHOR_RIGHT_UPPER;
+        }
+        ValuePrintOut(rectangle_prefix + "TPOCA" + Suffix + LastName, value_time, PriceOfMaxRange, "Number of TPOs above the POC: " + IntegerToString(TPOCountAbove), anchor_tpoca, TPOCountAboveColor, TPOCountAbove);
+        ValuePrintOut(rectangle_prefix + "TPOCB" + Suffix + LastName, value_time, PriceOfMaxRange, "Number of TPOs below the POC: " + IntegerToString(TPOCountBelow), anchor_tpocb, TPOCountBelowColor, TPOCountBelow);
+    }
+    
     return true;
 }
 
@@ -1640,7 +1662,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, c
 //| A cycle through intraday sessions for a given day with necessary checks. |
 //| Returns true on success, false - on failure.                             |
 //+--------------------------------------------------------------------------+
-bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const double& High[], const double& Low[], const datetime& Time[], const int rates_total)
+bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const int rates_total)
 {
     // 'remember_*' vars point at day start and day end throughout this function.
     int remember_sessionstart = sessionstart;
@@ -1655,7 +1677,7 @@ bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const
     // For each intraday session, find its own sessionstart and sessionend.
     int IntradaySessionCount_tmp = IntradaySessionCount;
     // If Ignore_Saturday_Sunday is on, day's start is on Monday, and there is a "22:00-06:00"-style intraday session defined, increase the counter to run the "later" "22:00-06:00" session and create this temporary dummy session.
-    if ((SaturdaySunday == Ignore_Saturday_Sunday) && (TimeDayOfWeek(Time[remember_sessionstart] + TimeShiftMinutes * 60) == 1) && (IntradayCrossSessionDefined > -1))
+    if ((_SaturdaySunday == Ignore_Saturday_Sunday) && (TimeDayOfWeek(iTime(Symbol(), Period(), remember_sessionstart) + TimeShiftMinutes * 60) == 1) && (IntradayCrossSessionDefined > -1))
     {
         IntradaySessionCount_tmp++;
     }
@@ -1678,16 +1700,16 @@ bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const
         if (Max_number_of_bars_in_a_session < 0)
         {
             Max_number_of_bars_in_a_session = 24 * 60 + Max_number_of_bars_in_a_session;
-            if (SaturdaySunday == Ignore_Saturday_Sunday)
+            if (_SaturdaySunday == Ignore_Saturday_Sunday)
             {
                 // Day start is on Monday. And it is not a special additional intra-Monday session.
-                if ((TimeDayOfWeek(Time[remember_sessionstart] + TimeShiftMinutes * 60) == 1) && (!ContinuePreventionFlag))
+                if ((TimeDayOfWeek(iTime(Symbol(), Period(), remember_sessionstart) + TimeShiftMinutes * 60) == 1) && (!ContinuePreventionFlag))
                 {
                     // Cut out Sunday part.
                     Max_number_of_bars_in_a_session -= 24 * 60 - IDStartTime[intraday_i];
                 }
                 // Day start is on Friday.
-                else if (TimeDayOfWeek(Time[remember_sessionstart] + TimeShiftMinutes * 60) == 5)
+                else if (TimeDayOfWeek(iTime(Symbol(), Period(), remember_sessionstart) + TimeShiftMinutes * 60) == 5)
                 {
                     // Cut out Saturday part.
                     Max_number_of_bars_in_a_session -= IDEndTime[intraday_i];
@@ -1696,18 +1718,18 @@ bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const
         }
 
         // If Append_Saturday_Sunday is on:
-        if (SaturdaySunday == Append_Saturday_Sunday)
+        if (_SaturdaySunday == Append_Saturday_Sunday)
         {
             // The intraday session starts on 00:00 or otherwise captures midnight, and remember_sessionstart points to Sunday:
-            if (((IDStartTime[intraday_i] == 0) || (IDStartTime[intraday_i] > IDEndTime[intraday_i])) && (TimeDayOfWeek(Time[remember_sessionstart] + TimeShiftMinutes * 60) == 0))
+            if (((IDStartTime[intraday_i] == 0) || (IDStartTime[intraday_i] > IDEndTime[intraday_i])) && (TimeDayOfWeek(iTime(Symbol(), Period(), remember_sessionstart) + TimeShiftMinutes * 60) == 0))
             {
                 // Add Sunday hours.
-                Max_number_of_bars_in_a_session += 24 * 60 - (TimeHour(Time[remember_sessionstart] + TimeShiftMinutes * 60) * 60 + TimeMinute(Time[remember_sessionstart] + TimeShiftMinutes * 60));
+                Max_number_of_bars_in_a_session += 24 * 60 - (TimeHour(iTime(Symbol(), Period(), remember_sessionstart) + TimeShiftMinutes * 60) * 60 + TimeMinute(iTime(Symbol(), Period(), remember_sessionstart) + TimeShiftMinutes * 60));
                 // Remove the part of Sunday that has already been added before.
                 if (IDStartTime[intraday_i] > IDEndTime[intraday_i]) Max_number_of_bars_in_a_session -= 24 * 60 - IDStartTime[intraday_i];
             }
             // The intraday session ends on 00:00 or otherwise captures midnight, and remember_sessionstart points to Friday:
-            else if (((IDEndTime[intraday_i] == 24 * 60) || (IDStartTime[intraday_i] > IDEndTime[intraday_i])) && (TimeDayOfWeek(Time[remember_sessionstart] + TimeShiftMinutes * 60) == 5))
+            else if (((IDEndTime[intraday_i] == 24 * 60) || (IDStartTime[intraday_i] > IDEndTime[intraday_i])) && (TimeDayOfWeek(iTime(Symbol(), Period(), remember_sessionstart) + TimeShiftMinutes * 60) == 5))
             {
                 // Add Saturday hours. The thing is we don't know how many hours there will be on Saturday. So add to max.
                 Max_number_of_bars_in_a_session += 24 * 60;
@@ -1723,40 +1745,40 @@ bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const
         if (FirstRunDone)
         {
             //sessionstart = day_start;
-            hour = TimeHour(Time[0] + TimeShiftMinutes * 60);
-            minute = TimeMinute(Time[0] + TimeShiftMinutes * 60);
+            hour = TimeHour(iTime(Symbol(), Period(), 0) + TimeShiftMinutes * 60);
+            minute = TimeMinute(iTime(Symbol(), Period(), 0) + TimeShiftMinutes * 60);
             time = hour * 60 + minute;
 
             // For example, 13:00-18:00.
             if (IDStartTime[intraday_i] < IDEndTime[intraday_i])
             {
-                if (SaturdaySunday == Append_Saturday_Sunday)
+                if (_SaturdaySunday == Append_Saturday_Sunday)
                 {
                     // Skip all sessions that do not absorb Sunday session:
-                    if ((IDStartTime[intraday_i] != 0) && (TimeDayOfWeek(Time[0] + TimeShiftMinutes * 60) == 0)) continue;
+                    if ((IDStartTime[intraday_i] != 0) && (TimeDayOfWeek(iTime(Symbol(), Period(), 0) + TimeShiftMinutes * 60) == 0)) continue;
                     // Skip all sessions that do not absorb Saturday session:
-                    if ((IDEndTime[intraday_i] != 24 * 60) && (TimeDayOfWeek(Time[0] + TimeShiftMinutes * 60) == 6)) continue;
+                    if ((IDEndTime[intraday_i] != 24 * 60) && (TimeDayOfWeek(iTime(Symbol(), Period(), 0) + TimeShiftMinutes * 60) == 6)) continue;
                 }
                 // If Append_Saturday_Sunday is on and the session starts on 00:00, and now is either Sunday or Monday before the session's end:
-                if ((SaturdaySunday == Append_Saturday_Sunday) && (IDStartTime[intraday_i] == 0) && ((TimeDayOfWeek(Time[0] + TimeShiftMinutes * 60) == 0) || ((TimeDayOfWeek(Time[0] + TimeShiftMinutes * 60) == 1) && (time < IDEndTime[intraday_i]))))
+                if ((_SaturdaySunday == Append_Saturday_Sunday) && (IDStartTime[intraday_i] == 0) && ((TimeDayOfWeek(iTime(Symbol(), Period(), 0) + TimeShiftMinutes * 60) == 0) || ((TimeDayOfWeek(iTime(Symbol(), Period(), 0) + TimeShiftMinutes * 60) == 1) && (time < IDEndTime[intraday_i]))))
                 {
                     // Then we can use remember_sessionstart as the session's start.
                     sessionstart = remember_sessionstart;
                 }
                 else if (((time < IDEndTime[intraday_i]) && (time >= IDStartTime[intraday_i]))
                          // If Append_Saturday_Sunday is on and the session ends on 24:00, and now is Saturday, then go on in case, for example, of 18:00 Saturday time and 16:00-00:00 defined session.
-                         || ((SaturdaySunday == Append_Saturday_Sunday) && (IDEndTime[intraday_i] == 24 * 60) && (TimeDayOfWeek(Time[0] + TimeShiftMinutes * 60) == 6)))
+                         || ((_SaturdaySunday == Append_Saturday_Sunday) && (IDEndTime[intraday_i] == 24 * 60) && (TimeDayOfWeek(iTime(Symbol(), Period(), 0) + TimeShiftMinutes * 60) == 6)))
                 {
                     sessionstart = 0;
-                    int sessiontime = TimeHour(Time[sessionstart] + TimeShiftMinutes * 60) * 60 + TimeMinute(Time[sessionstart] + TimeShiftMinutes * 60);
+                    int sessiontime = TimeHour(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) * 60 + TimeMinute(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60);
                     while (((sessiontime > IDStartTime[intraday_i])
                             // Prevents problems when the day has partial data (e.g. Sunday) when neither appending not ignoring Saturday/Sunday. Alternatively, continue looking for the sessionstart bar if we moved from Saturday to Friday with Append_Saturday_Sunday and for XX:XX-00:00 session.
-                            && ((TimeDayOfYear(Time[sessionstart] + TimeShiftMinutes * 60) == TimeDayOfYear(Time[0] + TimeShiftMinutes * 60)) || ((SaturdaySunday == Append_Saturday_Sunday) && (IDEndTime[intraday_i] == 24 * 60) && (TimeDayOfWeek(Time[0] + TimeShiftMinutes * 60) == 6))))
+                            && ((TimeDayOfYear(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == TimeDayOfYear(iTime(Symbol(), Period(), 0) + TimeShiftMinutes * 60)) || ((_SaturdaySunday == Append_Saturday_Sunday) && (IDEndTime[intraday_i] == 24 * 60) && (TimeDayOfWeek(iTime(Symbol(), Period(), 0) + TimeShiftMinutes * 60) == 6))))
                             // If Append_Saturday_Sunday is on and the session ends on 24:00 and the session start is now going through Saturday, then go on in case, for example, of 13:00 Saturday time and 16:00-00:00 defined session.
-                            || ((SaturdaySunday == Append_Saturday_Sunday) && (IDEndTime[intraday_i] == 24 * 60) && (TimeDayOfWeek(Time[sessionstart] + TimeShiftMinutes * 60) == 6)))
+                            || ((_SaturdaySunday == Append_Saturday_Sunday) && (IDEndTime[intraday_i] == 24 * 60) && (TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == 6)))
                     {
                         sessionstart++;
-                        sessiontime = TimeHour(Time[sessionstart] + TimeShiftMinutes * 60) * 60 + TimeMinute(Time[sessionstart] + TimeShiftMinutes * 60);
+                        sessiontime = TimeHour(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) * 60 + TimeMinute(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60);
                     }
                     // This check is necessary because sessionstart may pass to the wrong day in some cases.
                     if (sessionstart > remember_sessionstart) sessionstart = remember_sessionstart;
@@ -1767,35 +1789,35 @@ bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const
             else if (IDStartTime[intraday_i] > IDEndTime[intraday_i])
             {
                 // If Append_Saturday_Sunday is on and now is either Sunday or Monday before the session's end:
-                if ((SaturdaySunday == Append_Saturday_Sunday) && ((TimeDayOfWeek(Time[0] + TimeShiftMinutes * 60) == 0) || ((TimeDayOfWeek(Time[0] + TimeShiftMinutes * 60) == 1) && (time < IDEndTime[intraday_i]))))
+                if ((_SaturdaySunday == Append_Saturday_Sunday) && ((TimeDayOfWeek(iTime(Symbol(), Period(), 0) + TimeShiftMinutes * 60) == 0) || ((TimeDayOfWeek(iTime(Symbol(), Period(), 0) + TimeShiftMinutes * 60) == 1) && (time < IDEndTime[intraday_i]))))
                 {
                     // Then we can use remember_sessionstart as the session's start.
                     sessionstart = remember_sessionstart;
                 }
                 // If Ignore_Saturday_Sunday is on and it is Monday before the session's end:
-                else if ((SaturdaySunday == Ignore_Saturday_Sunday) && (TimeDayOfWeek(Time[0] + TimeShiftMinutes * 60) == 1) && (time < IDEndTime[intraday_i]))
+                else if ((_SaturdaySunday == Ignore_Saturday_Sunday) && (TimeDayOfWeek(iTime(Symbol(), Period(), 0) + TimeShiftMinutes * 60) == 1) && (time < IDEndTime[intraday_i]))
                 {
                     // Then we can use remember_sessionstart as the session's start.
                     sessionstart = remember_sessionstart;
                 }
                 else if (((time < IDEndTime[intraday_i]) || (time >= IDStartTime[intraday_i]))
                          // If Append_Saturday_Sunday is on and now is Saturday, then go on in case, for example, of 18:00 Saturday time and 22:00-06:00 defined session.
-                         || ((SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(Time[0] + TimeShiftMinutes * 60) == 6)))
+                         || ((_SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(iTime(Symbol(), Period(), 0) + TimeShiftMinutes * 60) == 6)))
                 {
                     sessionstart = 0;
-                    int sessiontime = TimeHour(Time[sessionstart] + TimeShiftMinutes * 60) * 60 + TimeMinute(Time[sessionstart] + TimeShiftMinutes * 60);
+                    int sessiontime = TimeHour(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) * 60 + TimeMinute(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60);
                     // Within 24 hours of the current time - but can be today or yesterday.
-                    while (((sessiontime > IDStartTime[intraday_i]) && (Time[0] - Time[sessionstart] <= 3600 * 24))
+                    while (((sessiontime > IDStartTime[intraday_i]) && (iTime(Symbol(), Period(), 0) - iTime(Symbol(), Period(), sessionstart) <= 3600 * 24))
                             // Same day only.
-                            || ((sessiontime < IDEndTime[intraday_i]) && (TimeDayOfYear(Time[sessionstart] + TimeShiftMinutes * 60) == TimeDayOfYear(Time[0] + TimeShiftMinutes * 60)))
+                            || ((sessiontime < IDEndTime[intraday_i]) && (TimeDayOfYear(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == TimeDayOfYear(iTime(Symbol(), Period(), 0) + TimeShiftMinutes * 60)))
                             // If Append_Saturday_Sunday is on and the session start is now going through Saturday, then go on in case, for example, of 18:00 Saturday time and 22:00-06:00 defined session.
-                            || ((SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(Time[sessionstart] + TimeShiftMinutes * 60) == 6)))
+                            || ((_SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == 6)))
                     {
                         sessionstart++;
-                        sessiontime = TimeHour(Time[sessionstart] + TimeShiftMinutes * 60) * 60 + TimeMinute(Time[sessionstart] + TimeShiftMinutes * 60);
+                        sessiontime = TimeHour(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) * 60 + TimeMinute(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60);
                     }
                     // When the same condition in the above while cycle fails and sessionstart is one step farther than needed.
-                    if (Time[0] - Time[sessionstart] > 3600 * 24) sessionstart--;
+                    if (iTime(Symbol(), Period(), 0) - iTime(Symbol(), Period(), sessionstart) > 3600 * 24) sessionstart--;
                 }
                 else continue;
             }
@@ -1805,7 +1827,7 @@ bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const
             // Because apparently, we are still inside the session.
             sessionend = 0;
 
-            if (!ProcessSession(sessionstart, sessionend, i, High, Low, Time, rates_total)) return false;
+            if (!ProcessSession(sessionstart, sessionend, i, rates_total)) return false;
         }
         // If it is the first run.
         else
@@ -1817,36 +1839,36 @@ bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const
             if (IDStartTime[intraday_i] < IDEndTime[intraday_i])
             {
                 // If Append_Saturday_Sunday is on and the session ends on 24:00, and day's start is on Friday and day's end is on Saturday, then do not trigger 'continue' in case, for example, of 15:00 Saturday end and 16:00-00:00 defined session.
-                if ((SaturdaySunday == Append_Saturday_Sunday)/* && (IDEndTime[intraday_i] == 24 * 60)*/ && (TimeDayOfWeek(Time[remember_sessionend] + TimeShiftMinutes * 60) == 6) && (TimeDayOfWeek(Time[remember_sessionstart] + TimeShiftMinutes * 60) == 5))
+                if ((_SaturdaySunday == Append_Saturday_Sunday)/* && (IDEndTime[intraday_i] == 24 * 60)*/ && (TimeDayOfWeek(iTime(Symbol(), Period(), remember_sessionend) + TimeShiftMinutes * 60) == 6) && (TimeDayOfWeek(iTime(Symbol(), Period(), remember_sessionstart) + TimeShiftMinutes * 60) == 5))
                 {
                 }
                 // Intraday session starts after the today's actual session ended (for Friday/Saturday cases).
-                else if (TimeHour(Time[remember_sessionend] + TimeShiftMinutes * 60) * 60 + TimeMinute(Time[remember_sessionend] + TimeShiftMinutes * 60) < IDStartTime[intraday_i]) continue;
+                else if (TimeHour(iTime(Symbol(), Period(), remember_sessionend) + TimeShiftMinutes * 60) * 60 + TimeMinute(iTime(Symbol(), Period(), remember_sessionend) + TimeShiftMinutes * 60) < IDStartTime[intraday_i]) continue;
                 // If Append_Saturday_Sunday is on and the session starts on 00:00, and the session end points to Sunday or end points to Monday and start points to Sunday, then do not trigger 'continue' in case, for example, of 18:00 Sunday start and 00:00-16:00 defined session.
-                if ((SaturdaySunday == Append_Saturday_Sunday) && (((IDStartTime[intraday_i] == 0) && (TimeDayOfWeek(Time[remember_sessionend] + TimeShiftMinutes * 60) == 0)) || ((TimeDayOfWeek(Time[remember_sessionend] + TimeShiftMinutes * 60) == 1) && (TimeDayOfWeek(Time[remember_sessionstart] + TimeShiftMinutes * 60) == 0))))
+                if ((_SaturdaySunday == Append_Saturday_Sunday) && (((IDStartTime[intraday_i] == 0) && (TimeDayOfWeek(iTime(Symbol(), Period(), remember_sessionend) + TimeShiftMinutes * 60) == 0)) || ((TimeDayOfWeek(iTime(Symbol(), Period(), remember_sessionend) + TimeShiftMinutes * 60) == 1) && (TimeDayOfWeek(iTime(Symbol(), Period(), remember_sessionstart) + TimeShiftMinutes * 60) == 0))))
                 {
                 }
                 // Intraday session ends before the today's actual session starts (for Sunday cases).
-                else if (TimeHour(Time[remember_sessionstart] + TimeShiftMinutes * 60) * 60 + TimeMinute(Time[remember_sessionstart] + TimeShiftMinutes * 60) >= IDEndTime[intraday_i]) continue;
+                else if (TimeHour(iTime(Symbol(), Period(), remember_sessionstart) + TimeShiftMinutes * 60) * 60 + TimeMinute(iTime(Symbol(), Period(), remember_sessionstart) + TimeShiftMinutes * 60) >= IDEndTime[intraday_i]) continue;
                 // If Append_Saturday_Sunday is on and the session ends on 24:00, and the start points to Friday:
-                if ((SaturdaySunday == Append_Saturday_Sunday) && (IDEndTime[intraday_i] == 24 * 60) && (TimeDayOfWeek(Time[sessionstart] + TimeShiftMinutes * 60) == 5))
+                if ((_SaturdaySunday == Append_Saturday_Sunday) && (IDEndTime[intraday_i] == 24 * 60) && (TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == 5))
                 {
                     // We already have sessionend right because it is the same as remember_sessionend (end of Saturday).
                 }
                 // If Append_Saturday_Sunday is on and the session starts on 00:00 and the session end points to Sunday (it is current Sunday session , no Monday bars yet):
-                else if ((SaturdaySunday == Append_Saturday_Sunday) && (IDStartTime[intraday_i] == 0) && (TimeDayOfWeek(Time[sessionend] + TimeShiftMinutes * 60) == 0))
+                else if ((_SaturdaySunday == Append_Saturday_Sunday) && (IDStartTime[intraday_i] == 0) && (TimeDayOfWeek(iTime(Symbol(), Period(), sessionend) + TimeShiftMinutes * 60) == 0))
                 {
                     // We already have sessionend right because it is the same as remember_sessionend (current bar and it is on Sunday).
                 }
                 // Otherwise find the session end.
-                else while ((sessionend < rates_total) && ((TimeHour(Time[sessionend] + TimeShiftMinutes * 60) * 60 + TimeMinute(Time[sessionend] + TimeShiftMinutes * 60) >= IDEndTime[intraday_i]) || ((TimeDayOfWeek(Time[sessionend] + TimeShiftMinutes * 60) == 6) && (SaturdaySunday == Append_Saturday_Sunday))))
-                    {
-                        sessionend++;
-                    }
+                else while ((sessionend < rates_total) && ((TimeHour(iTime(Symbol(), Period(), sessionend) + TimeShiftMinutes * 60) * 60 + TimeMinute(iTime(Symbol(), Period(), sessionend) + TimeShiftMinutes * 60) >= IDEndTime[intraday_i]) || ((TimeDayOfWeek(iTime(Symbol(), Period(), sessionend) + TimeShiftMinutes * 60) == 6) && (_SaturdaySunday == Append_Saturday_Sunday))))
+                {
+                    sessionend++;
+                }
                 if (sessionend == rates_total) sessionend--;
 
                 // If Append_Saturday_Sunday is on and the session starts on 00:00 and the session start is now going through Sunday:
-                if ((SaturdaySunday == Append_Saturday_Sunday) && (IDStartTime[intraday_i] == 0) && (TimeDayOfWeek(Time[sessionstart] + TimeShiftMinutes * 60) == 0))
+                if ((_SaturdaySunday == Append_Saturday_Sunday) && (IDStartTime[intraday_i] == 0) && (TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == 0))
                 {
                     // We already have sessionstart right because it is the same as remember_sessionstart (start of Sunday).
                     sessionstart = remember_sessionstart;
@@ -1854,11 +1876,11 @@ bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const
                 else
                 {
                     sessionstart = sessionend;
-                    while ((sessionstart < rates_total) && (((TimeHour(Time[sessionstart] + TimeShiftMinutes * 60) * 60 + TimeMinute(Time[sessionstart] + TimeShiftMinutes * 60) >= IDStartTime[intraday_i])
+                    while ((sessionstart < rates_total) && (((TimeHour(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) * 60 + TimeMinute(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) >= IDStartTime[intraday_i])
                                                             // Same day - for cases when the day does not contain intraday session start time. Alternatively, continue looking for the sessionstart bar if we moved from Saturday to Friday with Append_Saturday_Sunday and for XX:XX-00:00 session.
-                                                            && ((TimeDayOfYear(Time[sessionstart] + TimeShiftMinutes * 60) == TimeDayOfYear(Time[sessionend] + TimeShiftMinutes * 60)) || ((SaturdaySunday == Append_Saturday_Sunday) && (IDEndTime[intraday_i] == 24 * 60) && (TimeDayOfWeek(Time[sessionend] + TimeShiftMinutes * 60) == 6))))
+                                                            && ((TimeDayOfYear(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == TimeDayOfYear(iTime(Symbol(), Period(), sessionend) + TimeShiftMinutes * 60)) || ((_SaturdaySunday == Append_Saturday_Sunday) && (IDEndTime[intraday_i] == 24 * 60) && (TimeDayOfWeek(iTime(Symbol(), Period(), sessionend) + TimeShiftMinutes * 60) == 6))))
                                                             // If Append_Saturday_Sunday is on and the session ends on 24:00, and the session start is now going through Saturday, then go on in case, for example, of 15:00 Saturday end and 16:00-00:00 defined session.
-                                                            || ((SaturdaySunday == Append_Saturday_Sunday) && (IDEndTime[intraday_i] == 24 * 60) && (TimeDayOfWeek(Time[sessionstart] + TimeShiftMinutes * 60) == 6))
+                                                            || ((_SaturdaySunday == Append_Saturday_Sunday) && (IDEndTime[intraday_i] == 24 * 60) && (TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == 6))
                                                            ))
                     {
                         sessionstart++;
@@ -1870,35 +1892,35 @@ bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const
             else if (IDStartTime[intraday_i] > IDEndTime[intraday_i])
             {
                 // If Append_Saturday_Sunday is on and the start points to Friday, then do not trigger 'continue' in case, for example, of 15:00 Saturday end and 22:00-06:00 defined session.
-                if ((SaturdaySunday == Append_Saturday_Sunday) && (((TimeDayOfWeek(Time[sessionstart] + TimeShiftMinutes * 60) == 5) && (TimeDayOfWeek(Time[remember_sessionend] + TimeShiftMinutes * 60) == 6)) || ((TimeDayOfWeek(Time[sessionstart] + TimeShiftMinutes * 60) == 0) && (TimeDayOfWeek(Time[remember_sessionend] + TimeShiftMinutes * 60) == 1))))
+                if ((_SaturdaySunday == Append_Saturday_Sunday) && (((TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == 5) && (TimeDayOfWeek(iTime(Symbol(), Period(), remember_sessionend) + TimeShiftMinutes * 60) == 6)) || ((TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == 0) && (TimeDayOfWeek(iTime(Symbol(), Period(), remember_sessionend) + TimeShiftMinutes * 60) == 1))))
                 {
                 }
                 // Today's intraday session starts after the end of the actual session (for Friday/Saturday cases).
-                else if (TimeHour(Time[remember_sessionend] + TimeShiftMinutes * 60) * 60 + TimeMinute(Time[remember_sessionend] + TimeShiftMinutes * 60) < IDStartTime[intraday_i]) continue;
+                else if (TimeHour(iTime(Symbol(), Period(), remember_sessionend) + TimeShiftMinutes * 60) * 60 + TimeMinute(iTime(Symbol(), Period(), remember_sessionend) + TimeShiftMinutes * 60) < IDStartTime[intraday_i]) continue;
 
                 // If Append_Saturday_Sunday is on and the session start is on Sunday:
-                if ((SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(Time[sessionstart] + TimeShiftMinutes * 60) == 0))
+                if ((_SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == 0))
                 {
                     // We already have sessionstart right because it is the same as remember_sessionstart (start of Sunday).
                     sessionstart = remember_sessionstart;
                 }
                 // If Ignore_Saturday_Sunday is on and it is Monday: (and it is not a special additional intra-Monday session.)
-                else if ((SaturdaySunday == Ignore_Saturday_Sunday) && (TimeDayOfWeek(Time[remember_sessionstart] + TimeShiftMinutes * 60) == 1) && (!ContinuePreventionFlag))
+                else if ((_SaturdaySunday == Ignore_Saturday_Sunday) && (TimeDayOfWeek(iTime(Symbol(), Period(), remember_sessionstart) + TimeShiftMinutes * 60) == 1) && (!ContinuePreventionFlag))
                 {
                     // Then we can use remember_sessionstart as the session's start.
                     sessionstart = remember_sessionstart;
                     // Monday starts on 7:00 and we have 22:00-6:00. Skip it.
-                    if (TimeHour(Time[sessionstart] + TimeShiftMinutes * 60) * 60 + TimeMinute(Time[sessionstart] + TimeShiftMinutes * 60) >= IDEndTime[intraday_i]) continue;
+                    if (TimeHour(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) * 60 + TimeMinute(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) >= IDEndTime[intraday_i]) continue;
                 }
                 else
                 {
                     // Find starting bar.
                     sessionstart = remember_sessionend; // Start from the end.
-                    while ((sessionstart < rates_total) && (((TimeHour(Time[sessionstart] + TimeShiftMinutes * 60) * 60 + TimeMinute(Time[sessionstart] + TimeShiftMinutes * 60) >= IDStartTime[intraday_i])
+                    while ((sessionstart < rates_total) && (((TimeHour(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) * 60 + TimeMinute(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) >= IDStartTime[intraday_i])
                                                             // Same day - for cases when the day does not contain intraday session start time.
-                                                            && ((TimeDayOfYear(Time[sessionstart] + TimeShiftMinutes * 60) == TimeDayOfYear(Time[remember_sessionend] + TimeShiftMinutes * 60)) || (TimeDayOfYear(Time[sessionstart] + TimeShiftMinutes * 60) == TimeDayOfYear(Time[remember_sessionstart] + TimeShiftMinutes * 60))))
+                                                            && ((TimeDayOfYear(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == TimeDayOfYear(iTime(Symbol(), Period(), remember_sessionend) + TimeShiftMinutes * 60)) || (TimeDayOfYear(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == TimeDayOfYear(iTime(Symbol(), Period(), remember_sessionstart) + TimeShiftMinutes * 60))))
                                                             // If Append_Saturday_Sunday is on and the session start is now going through Saturday, then go on in case, for example, of 15:00 Saturday end and 22:00-06:00 defined session.
-                                                            || ((SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(Time[sessionstart] + TimeShiftMinutes * 60) == 6))
+                                                            || ((_SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == 6))
                                                            ))
                     {
                         sessionstart++;
@@ -1908,21 +1930,21 @@ bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const
 
                 int sessionlength; // In seconds.
                 // If Append_Saturday_Sunday is on and the end points to Saturday, don't go through this calculation because sessionend = remember_sessionend.
-                if ((SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(Time[sessionend] + TimeShiftMinutes * 60) == 6))
+                if ((_SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(iTime(Symbol(), Period(), sessionend) + TimeShiftMinutes * 60) == 6))
                 {
                     // We already have sessionend right because it is the same as remember_sessionend (end of Saturday).
                 }
                 // If Append_Saturday_Sunday is on and the start points to Sunday, use a simple method to find the end.
-                else if ((SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(Time[sessionstart] + TimeShiftMinutes * 60) == 0))
+                else if ((_SaturdaySunday == Append_Saturday_Sunday) && (TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == 0))
                 {
                     // While we are on Monday and sessionend is pointing on bar after IDEndTime.
-                    while ((sessionend < rates_total) && (TimeDayOfWeek(Time[sessionend] + TimeShiftMinutes * 60) == 1) && (TimeHour(Time[sessionend] + TimeShiftMinutes * 60) * 60 + TimeMinute(Time[sessionend] + TimeShiftMinutes * 60) >= IDEndTime[intraday_i]))
+                    while ((sessionend < rates_total) && (TimeDayOfWeek(iTime(Symbol(), Period(), sessionend) + TimeShiftMinutes * 60) == 1) && (TimeHour(iTime(Symbol(), Period(), sessionend) + TimeShiftMinutes * 60) * 60 + TimeMinute(iTime(Symbol(), Period(), sessionend) + TimeShiftMinutes * 60) >= IDEndTime[intraday_i]))
                     {
                         sessionend++;
                     }
                 }
                 // If Ignore_Saturday_Sunday is on and the session starts on Friday:
-                else if ((SaturdaySunday == Ignore_Saturday_Sunday) && (TimeDayOfWeek(Time[remember_sessionstart] + TimeShiftMinutes * 60) == 5))
+                else if ((_SaturdaySunday == Ignore_Saturday_Sunday) && (TimeDayOfWeek(iTime(Symbol(), Period(), remember_sessionstart) + TimeShiftMinutes * 60) == 5))
                 {
                     // Then it also ends on Friday.
                     sessionend = remember_sessionend;
@@ -1932,8 +1954,8 @@ bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const
                     sessionend = sessionstart;
                     sessionlength = (24 * 60 - IDStartTime[intraday_i] + IDEndTime[intraday_i]) * 60;
                     // If ignoring Sundays and session start is on Monday, cut out Sunday part of the intraday session. And it is not a special additional intra-Monday session.
-                    if ((SaturdaySunday == Ignore_Saturday_Sunday) && (TimeDayOfWeek(Time[sessionstart] + TimeShiftMinutes * 60) == 1) && (!ContinuePreventionFlag)) sessionlength -= (24 * 60 - IDStartTime[intraday_i]) * 60;
-                    while ((sessionend >= 0) && (Time[sessionend] - Time[sessionstart] < sessionlength))
+                    if ((_SaturdaySunday == Ignore_Saturday_Sunday) && (TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart) + TimeShiftMinutes * 60) == 1) && (!ContinuePreventionFlag)) sessionlength -= (24 * 60 - IDStartTime[intraday_i]) * 60;
+                    while ((sessionend >= 0) && (iTime(Symbol(), Period(), sessionend) - iTime(Symbol(), Period(), sessionstart) < sessionlength))
                     {
                         sessionend--;
                     }
@@ -1945,7 +1967,7 @@ bool ProcessIntradaySession(int sessionstart, int sessionend, const int i, const
 
             if (sessionend == sessionstart) continue; // No need to process such an intraday session.
 
-            if (!ProcessSession(sessionstart, sessionend, i, High, Low, Time, rates_total)) return false;
+            if (!ProcessSession(sessionstart, sessionend, i, rates_total)) return false;
         }
     }
     Suffix = "_ID";
@@ -2022,7 +2044,7 @@ void CheckRays()
         string suffix = RememberSessionSuffix[i];
         string rec_name = "";
 
-        if (Session == Rectangle) rec_name = MPR_Array[i].name + "_";
+        if (_Session == Rectangle) rec_name = MPR_Array[i].name + "_";
 
         // Process Single Print Rays to hide those that shouldn't be visible.
         if ((HideRaysFromInvisibleSessions) && (SinglePrintRays))
@@ -2061,7 +2083,7 @@ void CheckRays()
                     ObjectSetInteger(0, rec_name + "Median Ray" + suffix + last_name, OBJPROP_WIDTH, MedianRayWidth);
                     ObjectSetInteger(0, rec_name + "Median Ray" + suffix + last_name, OBJPROP_BACK, false);
                     ObjectSetInteger(0, rec_name + "Median Ray" + suffix + last_name, OBJPROP_SELECTABLE, false);
-                    if ((RightToLeft) && (i == SessionsNumber - 1) && (Session != Rectangle))
+                    if ((RightToLeft) && (i == SessionsNumber - 1) && (_Session != Rectangle))
                     {
                         ObjectSetInteger(0, rec_name + "Median Ray" + suffix + last_name, OBJPROP_RAY_LEFT, true);
                         ObjectSetInteger(0, rec_name + "Median Ray" + suffix + last_name, OBJPROP_RAY_RIGHT, false);
@@ -2072,6 +2094,7 @@ void CheckRays()
                         ObjectSetInteger(0, rec_name + "Median Ray" + suffix + last_name, OBJPROP_RAY_LEFT, false);
                     }
                     ObjectSetInteger(0, rec_name + "Median Ray" + suffix + last_name, OBJPROP_HIDDEN, true);
+                    ObjectSetString(0, rec_name + "Median Ray" + suffix + last_name, OBJPROP_TOOLTIP, "Median Ray");
                 }
                 else
                 {
@@ -2111,7 +2134,7 @@ void CheckRays()
                     ObjectSetInteger(0, rec_name + "Value Area HighRay" + suffix + last_name, OBJPROP_WIDTH, ValueAreaRayHighLowWidth);
                     ObjectSetInteger(0, rec_name + "Value Area HighRay" + suffix + last_name, OBJPROP_BACK, false);
                     ObjectSetInteger(0, rec_name + "Value Area HighRay" + suffix + last_name, OBJPROP_SELECTABLE, false);
-                    if ((RightToLeft) && (i == SessionsNumber - 1) && (Session != Rectangle))
+                    if ((RightToLeft) && (i == SessionsNumber - 1) && (_Session != Rectangle))
                     {
                         ObjectSetInteger(0, rec_name + "Value Area HighRay" + suffix + last_name, OBJPROP_RAY_RIGHT, false);
                         ObjectSetInteger(0, rec_name + "Value Area HighRay" + suffix + last_name, OBJPROP_RAY_LEFT, true);
@@ -2122,6 +2145,7 @@ void CheckRays()
                         ObjectSetInteger(0, rec_name + "Value Area HighRay" + suffix + last_name, OBJPROP_RAY_LEFT, false);
                     }
                     ObjectSetInteger(0, rec_name + "Value Area HighRay" + suffix + last_name, OBJPROP_HIDDEN, true);
+                    ObjectSetString(0, rec_name + "Value Area HighRay" + suffix + last_name, OBJPROP_TOOLTIP, "Value Area High Ray");
                 }
                 else
                 {
@@ -2138,7 +2162,7 @@ void CheckRays()
                     ObjectSetInteger(0, rec_name + "Value Area LowRay" + suffix + last_name, OBJPROP_WIDTH, ValueAreaRayHighLowWidth);
                     ObjectSetInteger(0, rec_name + "Value Area LowRay" + suffix + last_name, OBJPROP_BACK, false);
                     ObjectSetInteger(0, rec_name + "Value Area LowRay" + suffix + last_name, OBJPROP_SELECTABLE, false);
-                    if ((RightToLeft) && (i == SessionsNumber - 1) && (Session != Rectangle))
+                    if ((RightToLeft) && (i == SessionsNumber - 1) && (_Session != Rectangle))
                     {
                         ObjectSetInteger(0, rec_name + "Value Area LowRay" + suffix + last_name, OBJPROP_RAY_RIGHT, false);
                         ObjectSetInteger(0, rec_name + "Value Area LowRay" + suffix + last_name, OBJPROP_RAY_LEFT, true);
@@ -2148,6 +2172,7 @@ void CheckRays()
                         ObjectSetInteger(0, rec_name + "Value Area LowRay" + suffix + last_name, OBJPROP_RAY_RIGHT, true);
                         ObjectSetInteger(0, rec_name + "Value Area LowRay" + suffix + last_name, OBJPROP_RAY_LEFT, false);
                     }
+                    ObjectSetString(0, rec_name + "Value Area LowRay" + suffix + last_name, OBJPROP_TOOLTIP, "Value Area Low Ray");
                     ObjectSetInteger(0, rec_name + "Value Area LowRay" + suffix + last_name, OBJPROP_HIDDEN, true);
                 }
                 else
@@ -2310,7 +2335,7 @@ void CheckHistoricalArrowsForNonMPSPRRays(const int bar_start, const string ray_
 // Checks if any of the arrow alerts triggered on a given candle (n) with a given ray's level and places a chart object using name.
 void CheckAndDrawArrow(const int n, const double level, const string ray_name)
 {
-    // Price breaks (using pre-previous High and previous Close), candle closes, and gap crosses using Close[1].
+    // Price breaks (using pre-previous High and previous Close), candle closes, and gap crosses using iClose(Symbol(), Period(), 1).
     if (AlertOnPriceBreak) // Price break alerts.
     {
         if (((iHigh(Symbol(), Period(), n) >= level) && (iClose(Symbol(), Period(), n) < level) && (iClose(Symbol(), Period(), n + 1) < level)) || ((iLow(Symbol(), Period(), n) <= level) && (iClose(Symbol(), Period(), n) > level) && (iClose(Symbol(), Period(), n + 1) > level)))
@@ -2374,7 +2399,7 @@ void CheckRayIntersections(const string object, const int start_j)
 //+------------------------------------------------------------------+
 //| Print out VAH, VAL, or POC value on the chart.                   |
 //+------------------------------------------------------------------+
-void ValuePrintOut(const string obj_name, const datetime time, const double price, const ENUM_ANCHOR_POINT anchor = ANCHOR_RIGHT)
+void ValuePrintOut(const string obj_name, const datetime time, const double price, const string tooltip, const ENUM_ANCHOR_POINT anchor = ANCHOR_RIGHT, color value_color = 0, const int value = 0)
 {
     // Find object if it exists.
     if (ObjectFind(0, obj_name) >= 0)
@@ -2384,9 +2409,10 @@ void ValuePrintOut(const string obj_name, const datetime time, const double pric
     }
     else
     {
+        if (value_color == 0) value_color = KeyValuesColor;
         // Draw a new one.
         ObjectCreate(0, obj_name, OBJ_TEXT, 0, time, price);
-        ObjectSetInteger(0, obj_name, OBJPROP_COLOR, KeyValuesColor);
+        ObjectSetInteger(0, obj_name, OBJPROP_COLOR, value_color);
         ObjectSetInteger(0, obj_name, OBJPROP_FONTSIZE, KeyValuesSize);
         ObjectSetInteger(0, obj_name, OBJPROP_BACK, false);
         ObjectSetInteger(0, obj_name, OBJPROP_SELECTABLE, false);
@@ -2394,7 +2420,10 @@ void ValuePrintOut(const string obj_name, const datetime time, const double pric
         ObjectSetInteger(0, obj_name, OBJPROP_ANCHOR, anchor);
     }
     // Should be updated anyway.
-    ObjectSetString(0, obj_name, OBJPROP_TEXT, DoubleToString(price, _Digits));
+    string text = DoubleToString(price, _Digits);
+    if (value > 0) text = IntegerToString(value);
+    ObjectSetString(0, obj_name, OBJPROP_TEXT, text);
+    ObjectSetString(0, obj_name, OBJPROP_TOOLTIP, tooltip);
 }
 
 //+------------------------------------------------------------------+
@@ -2526,26 +2555,14 @@ void OnTimer()
 {
     if (GetTickCount() - LastRecalculationTime < 500) return; // Do not recalculate on timer if less than 500 ms passed.
 
-    double High[], Low[];
-    datetime Time[];
-    ArraySetAsSeries(High, true);
-    ArraySetAsSeries(Low, true);
-    ArraySetAsSeries(Time, true);
-
     int rates_total = iBars(Symbol(), Period());
-
-    int h = CopyHigh(Symbol(), Period(), 0, rates_total, High);
-    int l = CopyLow(Symbol(), Period(), 0, rates_total, Low);
-    int t = CopyTime(Symbol(), Period(), 0, rates_total, Time);
-
-    // Data not yet ready.
-    if ((h <= 0) || (l <= 0) || (t <= 0)) return;
 
     if (HideRaysFromInvisibleSessions) CheckRays(); // Should be checked regularly if the input parameter requires ray hiding/unhiding.
 
-    if (Session == Rectangle)
+    if (_Session == Rectangle)
     {
-        CheckRectangles(High, Low, Time, rates_total);
+        if (onetick == 0) InitializeOnetick(); // Can fail to initialize via OnTick() when the market is closed and a Rectangle session is used.
+        CheckRectangles(rates_total);
         return; // No need to call RedrawLastSession() even if RightToLeft is on because in that case all Rectangles are all right-to-left and are redrawn as needed.
     }
     
@@ -2564,25 +2581,22 @@ void OnTimer()
     if (SeamlessScrollingMode)
     {
         ObjectCleanup(); // Delete everything to make sure there are no leftover sessions behind the screen.
-        if (Session == Intraday) FirstRunDone = false; // Turn off because FirstRunDone should be false for Intraday sessions to draw properly in the past.
+        if (_Session == Intraday) FirstRunDone = false; // Turn off because FirstRunDone should be false for Intraday sessions to draw properly in the past.
         if ((EnableDevelopingPOC) || (EnableDevelopingVAHVAL))
         {
             for (int i = 0; i < Bars(Symbol(), Period()); i++) // Clean indicator buffers.
             {
-                DevelopingPOC_1[i] = EMPTY_VALUE;
-                DevelopingPOC_2[i] = EMPTY_VALUE;
-                DevelopingVAH_1[i] = EMPTY_VALUE;
-                DevelopingVAH_2[i] = EMPTY_VALUE;
-                DevelopingVAL_1[i] = EMPTY_VALUE;
-                DevelopingVAL_2[i] = EMPTY_VALUE;
+                DevelopingPOC[i] = EMPTY_VALUE;
+                DevelopingVAH[i] = EMPTY_VALUE;
+                DevelopingVAL[i] = EMPTY_VALUE;
             }
         }
     }
 
     // Check right-most time - did it change?
-    RedrawLastSession(High, Low, Time, rates_total);
+    RedrawLastSession(rates_total);
 
-    if ((SeamlessScrollingMode) && (Session == Intraday)) FirstRunDone = true; // Turn back on after processing Intraday sessions.
+    if ((SeamlessScrollingMode) && (_Session == Intraday)) FirstRunDone = true; // Turn back on after processing Intraday sessions.
 
     LastRecalculationTime = GetTickCount(); // Remember last calculation time.
     ChartRedraw();
@@ -2590,7 +2604,7 @@ void OnTimer()
 
 // Find rectangles, create objects, process rectangle sessions, delete unneeded sessions (where rectangle no longer exists).
 // Make sure rectangles are added to the array in a sorted manner from oldest T1 to newest T1.
-void CheckRectangles(const double& High[], const double& Low[], const datetime& Time[], const int rates_total)
+void CheckRectangles(const int rates_total)
 {
     // Check if any existing MPR objects need to be deleted or moved:
     for (int i = mpr_total - 1; i >= 0 ; i--)
@@ -2608,12 +2622,9 @@ void CheckRectangles(const double& High[], const double& Low[], const datetime& 
                 // Re-initialize all bars using old rectangle borders:
                 for (int j = sessionstart; j >= sessionend; j--)
                 {
-                    DevelopingPOC_1[j] = EMPTY_VALUE;
-                    DevelopingPOC_2[j] = EMPTY_VALUE;
-                    DevelopingVAH_1[j] = EMPTY_VALUE;
-                    DevelopingVAH_2[j] = EMPTY_VALUE;
-                    DevelopingVAL_1[j] = EMPTY_VALUE;
-                    DevelopingVAL_2[j] = EMPTY_VALUE;
+                    DevelopingPOC[j] = EMPTY_VALUE;
+                    DevelopingVAH[j] = EMPTY_VALUE;
+                    DevelopingVAL[j] = EMPTY_VALUE;
                 }
             }
             delete MPR_Array[i];
@@ -2720,7 +2731,7 @@ void CheckRectangles(const double& High[], const double& Low[], const datetime& 
 
     // Process each rectangle.
     for (int i = 0; i < mpr_total; i++)
-        MPR_Array[i].Process(i, High, Low, Time, rates_total);
+        MPR_Array[i].Process(i, rates_total);
 
     if ((ShowValueAreaRays != None) || (ShowMedianRays != None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays))) CheckRays();
 
@@ -2747,7 +2758,7 @@ CRectangleMP::CRectangleMP(string given_name = "MPR")
 }
 
 // i - order number of the rectangle.
-void CRectangleMP::Process(const int i, const double& High[], const double& Low[], const datetime& Time[], const int rates_total)
+void CRectangleMP::Process(const int i, const int rates_total)
 {
     double p1 = ObjectGetDouble(0, name, OBJPROP_PRICE, 0);
     double p2 = ObjectGetDouble(0, name, OBJPROP_PRICE, 1);
@@ -2759,7 +2770,7 @@ void CRectangleMP::Process(const int i, const double& High[], const double& Low[
     int sessionend = iBarShift(Symbol(), Period(), (int)MathMax(t1, t2), true);
 
     // Rectangle actually doesn't start in the future.
-    if ((MathMin(t1, t2) <= Time[0]))
+    if ((MathMin(t1, t2) <= iTime(Symbol(), Period(), 0)))
         // But iBarShift fails.
         if ((sessionend == -1) && (sessionstart == -1)) return; // Then the data isn't ready yet.
 
@@ -2789,12 +2800,9 @@ void CRectangleMP::Process(const int i, const double& High[], const double& Low[
         // Re-initialize all bars using old rectangle borders:
         for (int j = local_sessionstart; j >= local_sessionend; j--)
         {
-            DevelopingPOC_1[j] = EMPTY_VALUE;
-            DevelopingPOC_2[j] = EMPTY_VALUE;
-            DevelopingVAH_1[j] = EMPTY_VALUE;
-            DevelopingVAH_2[j] = EMPTY_VALUE;
-            DevelopingVAL_1[j] = EMPTY_VALUE;
-            DevelopingVAL_2[j] = EMPTY_VALUE;
+            DevelopingPOC[j] = EMPTY_VALUE;
+            DevelopingVAH[j] = EMPTY_VALUE;
+            DevelopingVAL[j] = EMPTY_VALUE;
         }
         prev_Time0 = 0;
     }
@@ -2807,11 +2815,11 @@ void CRectangleMP::Process(const int i, const double& High[], const double& Low[
     bool new_bars_are_not_within_rectangle = true;
     bool current_bar_changed_within_boundaries = false;
 
-    if (Time[0] != prev_Time0)
+    if (iTime(Symbol(), Period(), 0) != prev_Time0)
     {
         new_bars_are_not_within_rectangle = false;
         // Check if any of the new bars fall into rectangle's boundaries:
-        if (((prev_Time0 < RectangleTimeMin) && (Time[0] < RectangleTimeMin)) || ((prev_Time0 > RectangleTimeMax) && (Time[0] > RectangleTimeMax))) new_bars_are_not_within_rectangle = true;
+        if (((prev_Time0 < RectangleTimeMin) && (iTime(Symbol(), Period(), 0) < RectangleTimeMin)) || ((prev_Time0 > RectangleTimeMax) && (iTime(Symbol(), Period(), 0) > RectangleTimeMax))) new_bars_are_not_within_rectangle = true;
 
         // Now check if the price of any of the new bars is within the rectangle's boundaries:
         if (!new_bars_are_not_within_rectangle)
@@ -2819,28 +2827,28 @@ void CRectangleMP::Process(const int i, const double& High[], const double& Low[
             int max_index = iHighest(Symbol(), Period(), MODE_HIGH, iBarShift(Symbol(), Period(), prev_Time0, true), 0);
             int min_index = iLowest(Symbol(), Period(), MODE_LOW, iBarShift(Symbol(), Period(), prev_Time0, true), 0);
 
-            if ((High[max_index] < RectanglePriceMin) || (Low[min_index] > RectanglePriceMax)) new_bars_are_not_within_rectangle = true;
+            if ((iHigh(Symbol(), Period(), max_index) < RectanglePriceMin) || (iLow(Symbol(), Period(), min_index) > RectanglePriceMax)) new_bars_are_not_within_rectangle = true;
         }
 
-        prev_Time0 = Time[0];
+        prev_Time0 = iTime(Symbol(), Period(), 0);
     }
     else // No new bars - check if the current bar's high or low changed within the rectangle's boundaries:
     {
-        if ((Time[0] >= RectangleTimeMin) && (Time[0] <= RectangleTimeMax)) // Bar within time boundaries.
+        if ((iTime(Symbol(), Period(), 0) >= RectangleTimeMin) && (iTime(Symbol(), Period(), 0) <= RectangleTimeMax)) // Bar within time boundaries.
         {
-            if (prev_High != High[0])
+            if (prev_High != iHigh(Symbol(), Period(), 0))
             {
-                if ((High[0] <= RectanglePriceMax) && (High[0] >= RectanglePriceMin)) current_bar_changed_within_boundaries = true;
+                if ((iHigh(Symbol(), Period(), 0) <= RectanglePriceMax) && (iHigh(Symbol(), Period(), 0) >= RectanglePriceMin)) current_bar_changed_within_boundaries = true;
             }
-            if (prev_Low != Low[0])
+            if (prev_Low != iLow(Symbol(), Period(), 0))
             {
-                if ((Low[0] <= RectanglePriceMax) && (Low[0] >= RectanglePriceMin)) current_bar_changed_within_boundaries = true;
+                if ((iLow(Symbol(), Period(), 0) <= RectanglePriceMax) && (iLow(Symbol(), Period(), 0) >= RectanglePriceMin)) current_bar_changed_within_boundaries = true;
             }
         }
     }
 
-    prev_High = High[0];
-    prev_Low = Low[0];
+    prev_High = iHigh(Symbol(), Period(), 0);
+    prev_Low = iLow(Symbol(), Period(), 0);
 
     if (sessionend < 0) sessionend = 0; // If the rectangles rightmost side is in the future, reset it to the current bar.
 
@@ -2856,7 +2864,7 @@ void CRectangleMP::Process(const int i, const double& High[], const double& Low[
             int min_index = iLowest(Symbol(), Period(), MODE_LOW, sessionstart - sessionend, sessionend);
             if ((max_index != -1) && (min_index != -1))
             {
-                if ((RectanglePriceMax > High[max_index]) && (RectanglePriceMin < Low[min_index]) && (prev_RectanglePriceMax > High[max_index]) && (prev_RectanglePriceMin < Low[min_index])) rectangle_changed_and_recalc_is_due = false;
+                if ((RectanglePriceMax > iHigh(Symbol(), Period(), max_index)) && (RectanglePriceMin < iLow(Symbol(), Period(), min_index)) && (prev_RectanglePriceMax > iHigh(Symbol(), Period(), max_index)) && (prev_RectanglePriceMin < iLow(Symbol(), Period(), min_index))) rectangle_changed_and_recalc_is_due = false;
                 else
                 {
                     need_to_clean_up_dots = true;
@@ -2896,10 +2904,10 @@ void CRectangleMP::Process(const int i, const double& High[], const double& Low[
 
     RememberSessionStart[i] = RectangleTimeMin;
     // Used only for Arrows:
-    if (Time[0] < RectangleTimeMax) RememberSessionEnd[i] = Time[0];
+    if (iTime(Symbol(), Period(), 0) < RectangleTimeMax) RememberSessionEnd[i] = iTime(Symbol(), Period(), 0);
     else RememberSessionEnd[i] = RectangleTimeMax;
 
-    if ((!new_bars_are_not_within_rectangle) || (current_bar_changed_within_boundaries) || (rectangle_changed_and_recalc_is_due) || ((Number != i) && ((RaysUntilIntersection != Stop_No_Rays) && ((ShowMedianRays != None) || (ShowValueAreaRays != None))))) ProcessSession(sessionstart, sessionend, i, High, Low, Time, rates_total, &this);
+    if ((!new_bars_are_not_within_rectangle) || (current_bar_changed_within_boundaries) || (rectangle_changed_and_recalc_is_due) || ((Number != i) && ((RaysUntilIntersection != Stop_No_Rays) && ((ShowMedianRays != None) || (ShowValueAreaRays != None))))) ProcessSession(sessionstart, sessionend, i, rates_total, &this);
 
     Number = i;
 }
@@ -2909,7 +2917,7 @@ void CRectangleMP::ResetPrevTime0()
     prev_Time0 = 0;
 }
 
-void PutSinglePrintMark(const double price, const int sessionstart, const string rectangle_prefix, const datetime& Time[])
+void PutSinglePrintMark(const double price, const int sessionstart, const string rectangle_prefix)
 {
     int t1 = sessionstart + 1, t2 = sessionstart;
     bool fill = true;
@@ -2919,41 +2927,42 @@ void PutSinglePrintMark(const double price, const int sessionstart, const string
         t2 = sessionstart - 1;
         fill = false;
     }
-    string LastNameStart = " " + TimeToString(Time[t1]) + " ";
+    string LastNameStart = " " + TimeToString(iTime(Symbol(), Period(), t1)) + " ";
     string LastName = LastNameStart + DoubleToString(price, _Digits);
 
     // If already there - ignore.
     if (ObjectFind(0, rectangle_prefix + "MPSP" + Suffix + LastName) >= 0) return;
-    ObjectCreate(0, rectangle_prefix + "MPSP" + Suffix + LastName, OBJ_RECTANGLE, 0, Time[t1], price, Time[t2], price - onetick);
+    ObjectCreate(0, rectangle_prefix + "MPSP" + Suffix + LastName, OBJ_RECTANGLE, 0, iTime(Symbol(), Period(), t1), price, iTime(Symbol(), Period(), t2), price - onetick);
     ObjectSetInteger(0, rectangle_prefix + "MPSP" + Suffix + LastName, OBJPROP_COLOR, SinglePrintColor);
 
     // Fills rectangle.
     ObjectSetInteger(0, rectangle_prefix + "MPSP" + Suffix + LastName, OBJPROP_FILL, fill);
     ObjectSetInteger(0, rectangle_prefix + "MPSP" + Suffix + LastName, OBJPROP_SELECTABLE, false);
     ObjectSetInteger(0, rectangle_prefix + "MPSP" + Suffix + LastName, OBJPROP_HIDDEN, true);
+    ObjectSetString(0, rectangle_prefix + "MPSP" + Suffix + LastName, OBJPROP_TOOLTIP, "Single Print Mark");
 }
 
-void RemoveSinglePrintMark(const double price, const int sessionstart, const string rectangle_prefix, const datetime& Time[])
+void RemoveSinglePrintMark(const double price, const int sessionstart, const string rectangle_prefix)
 {
     int t = sessionstart + 1;
     if (ShowSinglePrint == Rightside) t = sessionstart;
 
-    string LastNameStart = " " + TimeToString(Time[t]) + " ";
+    string LastNameStart = " " + TimeToString(iTime(Symbol(), Period(), t)) + " ";
     string LastName = LastNameStart + DoubleToString(price, _Digits);
 
     ObjectDelete(0, rectangle_prefix + "MPSP" + Suffix + LastName);
 }
 
-void PutSinglePrintRay(const double price, const int sessionstart, const string rectangle_prefix, const datetime& Time[], const color spr_color)
+void PutSinglePrintRay(const double price, const int sessionstart, const string rectangle_prefix, const color spr_color)
 {
-    datetime t1 = Time[sessionstart], t2;
-    if (sessionstart - 1 >= 0) t2 = Time[sessionstart - 1];
-    else t2 = Time[sessionstart] + 1;
+    datetime t1 = iTime(Symbol(), Period(), sessionstart), t2;
+    if (sessionstart - 1 >= 0) t2 = iTime(Symbol(), Period(), sessionstart - 1);
+    else t2 = iTime(Symbol(), Period(), sessionstart) + 1;
 
     if (ShowSinglePrint == Rightside)
     {
-        t1 = Time[sessionstart];
-        t2 = Time[sessionstart + 1];
+        t1 = iTime(Symbol(), Period(), sessionstart);
+        t2 = iTime(Symbol(), Period(), sessionstart + 1);
     }
 
     string LastNameStart = " " + TimeToString(t1) + " ";
@@ -2968,11 +2977,12 @@ void PutSinglePrintRay(const double price, const int sessionstart, const string 
     ObjectSetInteger(0, rectangle_prefix + "MPSPR" + Suffix + LastName, OBJPROP_RAY_RIGHT, true);
     ObjectSetInteger(0, rectangle_prefix + "MPSPR" + Suffix + LastName, OBJPROP_SELECTABLE, false);
     ObjectSetInteger(0, rectangle_prefix + "MPSPR" + Suffix + LastName, OBJPROP_HIDDEN, true);
+    ObjectSetString(0, rectangle_prefix + "MPSPR" + Suffix + LastName, OBJPROP_TOOLTIP, "Single Print Ray");
 }
 
-void RemoveSinglePrintRay(const double price, const int sessionstart, const string rectangle_prefix, const datetime& Time[])
+void RemoveSinglePrintRay(const double price, const int sessionstart, const string rectangle_prefix)
 {
-    datetime t = Time[sessionstart];
+    datetime t = iTime(Symbol(), Period(), sessionstart);
 
     string LastNameStart = " " + TimeToString(t) + " ";
     string LastName = LastNameStart + DoubleToString(price, _Digits);
@@ -2981,21 +2991,21 @@ void RemoveSinglePrintRay(const double price, const int sessionstart, const stri
 }
 
 // Called only when RightToLeft is on to update the right-most session.
-void RedrawLastSession(const double& High[], const double& Low[], const datetime& Time[], const int rates_total)
+void RedrawLastSession(const int rates_total)
 {
     if (SeamlessScrollingMode)
     {
         int last_visible_bar = (int)ChartGetInteger(ChartID(), CHART_FIRST_VISIBLE_BAR) - (int)ChartGetInteger(ChartID(), CHART_WIDTH_IN_BARS) + 1;
         if (last_visible_bar < 0) last_visible_bar = 0;
-        StartDate = Time[last_visible_bar];
+        StartDate = iTime(Symbol(), Period(), last_visible_bar);
     }
-    else if (StartFromCurrentSession) StartDate = Time[0];
+    else if (StartFromCurrentSession) StartDate = iTime(Symbol(), Period(), 0);
     else StartDate = StartFromDate;
 
     // Get start and end bar numbers of the given session.
-    int sessionend = FindSessionEndByDate(Time, StartDate, rates_total);
+    int sessionend = FindSessionEndByDate(StartDate, rates_total);
 
-    int sessionstart = FindSessionStart(Time, sessionend, rates_total);
+    int sessionstart = FindSessionStart(sessionend, rates_total);
     if (sessionstart == -1)
     {
         Print("Something went wrong! Waiting for data to load.");
@@ -3012,16 +3022,16 @@ void RedrawLastSession(const double& High[], const double& Low[], const datetime
         {
             sessionend = sessionstart + 1;
             if (sessionend >= Bars(Symbol(), Period())) return;
-            if (SaturdaySunday == Ignore_Saturday_Sunday)
+            if (_SaturdaySunday == Ignore_Saturday_Sunday)
             {
                 // Pass through Sunday and Saturday.
-                while ((TimeDayOfWeek(Time[sessionend]) == 0) || (TimeDayOfWeek(Time[sessionend]) == 6))
+                while ((TimeDayOfWeek(iTime(Symbol(), Period(), sessionend)) == 0) || (TimeDayOfWeek(iTime(Symbol(), Period(), sessionend)) == 6))
                 {
                     sessionend++;
                     if (sessionend >= Bars(Symbol(), Period())) break;
                 }
             }
-            sessionstart = FindSessionStart(Time, sessionend, rates_total);
+            sessionstart = FindSessionStart(sessionend, rates_total);
         }
         SessionsNumber = 0; // Reset previously remembered sessions as there won't be any need for them.
     }
@@ -3029,38 +3039,41 @@ void RedrawLastSession(const double& High[], const double& Low[], const datetime
     // We begin from the oldest session coming to the current session or to StartFromDate.
     for (int i = SessionToStart; i < _SessionsToCount; i++)
     {
-        if (Session == Intraday)
+        if (_Session == Intraday)
         {
-            if (!ProcessIntradaySession(sessionstart, sessionend, i, High, Low, Time, rates_total)) return;
+            if (!ProcessIntradaySession(sessionstart, sessionend, i, rates_total)) return;
         }
         else
         {
-            if (Session == Daily) Max_number_of_bars_in_a_session = PeriodSeconds(PERIOD_D1) / PeriodSeconds();
-            else if (Session == Weekly) Max_number_of_bars_in_a_session = 604800 / PeriodSeconds();
-            else if (Session == Monthly) Max_number_of_bars_in_a_session = 2678400 / PeriodSeconds();
-            if (SaturdaySunday == Append_Saturday_Sunday)
+            if (_Session == Daily) Max_number_of_bars_in_a_session = PeriodSeconds(PERIOD_D1) / PeriodSeconds();
+            else if (_Session == Weekly) Max_number_of_bars_in_a_session = 604800 / PeriodSeconds();
+            else if (_Session == Monthly) Max_number_of_bars_in_a_session = 2678400 / PeriodSeconds();
+            else if (_Session == Quarterly) Max_number_of_bars_in_a_session = 8035200 / PeriodSeconds();
+            else if (_Session == Semiannual) Max_number_of_bars_in_a_session = 16070400 / PeriodSeconds();
+            else if (_Session == Annual) Max_number_of_bars_in_a_session = 31622400 / PeriodSeconds();
+            if (_SaturdaySunday == Append_Saturday_Sunday)
             {
                 // The start is on Sunday - add remaining time.
-                if (TimeDayOfWeek(Time[sessionstart]) == 0) Max_number_of_bars_in_a_session += (24 * 3600 - (TimeHour(Time[sessionstart]) * 3600 + TimeMinute(Time[sessionstart]) * 60)) / PeriodSeconds();
+                if (TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart)) == 0) Max_number_of_bars_in_a_session += (24 * 3600 - (TimeHour(iTime(Symbol(), Period(), sessionstart)) * 3600 + TimeMinute(iTime(Symbol(), Period(), sessionstart)) * 60)) / PeriodSeconds();
                 // The end is on Saturday. +1 because even 0:00 bar deserves a bar.
-                if (TimeDayOfWeek(Time[sessionend]) == 6) Max_number_of_bars_in_a_session += ((TimeHour(Time[sessionend]) * 3600 + TimeMinute(Time[sessionend]) * 60)) / PeriodSeconds() + 1;
+                if (TimeDayOfWeek(iTime(Symbol(), Period(), sessionend)) == 6) Max_number_of_bars_in_a_session += ((TimeHour(iTime(Symbol(), Period(), sessionend)) * 3600 + TimeMinute(iTime(Symbol(), Period(), sessionend)) * 60)) / PeriodSeconds() + 1;
             }
-            if (!ProcessSession(sessionstart, sessionend, i, High, Low, Time, rates_total)) return;
+            if (!ProcessSession(sessionstart, sessionend, i, rates_total)) return;
         }
         // Go to the newer session only if there is one or more left.
         if (_SessionsToCount - i > 1)
         {
             sessionstart = sessionend - 1;
-            if (SaturdaySunday == Ignore_Saturday_Sunday)
+            if (_SaturdaySunday == Ignore_Saturday_Sunday)
             {
                 // Pass through Sunday and Saturday.
-                while ((TimeDayOfWeek(Time[sessionstart]) == 0) || (TimeDayOfWeek(Time[sessionstart]) == 6))
+                while ((TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart)) == 0) || (TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart)) == 6))
                 {
                     sessionstart--;
                     if (sessionstart == 0) break;
                 }
             }
-            sessionend = FindSessionEndByDate(Time, Time[sessionstart], Bars(Symbol(), Period()));
+            sessionend = FindSessionEndByDate(iTime(Symbol(), Period(), sessionstart), Bars(Symbol(), Period()));
         }
     }
 
@@ -3070,19 +3083,19 @@ void RedrawLastSession(const double& High[], const double& Low[], const datetime
 //+----------------------------------------------------------------------------------+
 //| Go through all prices on all N session bars from 1st to kth bar, where k = 1..N. |
 //+----------------------------------------------------------------------------------+
-void CalculateDevelopingPOCVAHVAL(const int sessionstart, const int sessionend, const double& High[], const double& Low[], CRectangleMP* rectangle = NULL)
+void CalculateDevelopingPOCVAHVAL(const int sessionstart, const int sessionend, CRectangleMP* rectangle = NULL)
 {
     // Cycle through all possible end bars to calculate the Developing POC.
     for (int max_bar = sessionstart; max_bar >= sessionend; max_bar--)
     {
-        if (((DevelopingPOC_1[max_bar] != EMPTY_VALUE) || (DevelopingPOC_2[max_bar] != EMPTY_VALUE)) && (max_bar > 1)) continue; // One of the buffers already filled and it isn't/wasn't the latest bar - skip.
+        if ((DevelopingPOC[max_bar] != EMPTY_VALUE) && (max_bar > 1)) continue; // One of the buffers already filled and it isn't/wasn't the latest bar - skip.
     
         // Determine the local price minimum and maximum.
-        double LocalMin =  Low[ iLowest(Symbol(), Period(), MODE_LOW,  sessionstart - max_bar + 1, max_bar)];
-        double LocalMax = High[iHighest(Symbol(), Period(), MODE_HIGH, sessionstart - max_bar + 1, max_bar)];
+        double LocalMin =  iLow( Symbol(), Period(), iLowest(Symbol(), Period(), MODE_LOW,  sessionstart - max_bar + 1, max_bar));
+        double LocalMax = iHigh( Symbol(), Period(), iHighest(Symbol(), Period(), MODE_HIGH, sessionstart - max_bar + 1, max_bar));
         
         // For rectangles, further restrictions may apply.
-        if (Session == Rectangle)
+        if (_Session == Rectangle)
         {
             if (LocalMax > rectangle.RectanglePriceMax) LocalMax = NormalizeDouble(rectangle.RectanglePriceMax, DigitsM);
             if (LocalMin < rectangle.RectanglePriceMin) LocalMin = NormalizeDouble(rectangle.RectanglePriceMin, DigitsM);
@@ -3109,7 +3122,7 @@ void CalculateDevelopingPOCVAHVAL(const int sessionstart, const int sessionend, 
             for (int bar = sessionstart; bar >= max_bar; bar--)
             {
                 // Price is encountered in the given bar.
-                if ((price >= Low[bar]) && (price <= High[bar]))
+                if ((price >= iLow(Symbol(), Period(), bar)) && (price <= iHigh(Symbol(), Period(), bar)))
                 {
                     // Update maximum distance from session's start to the found bar for the Developing POC.
                     // Using the center-most POC if there are more than one.
@@ -3163,10 +3176,10 @@ void CalculateDevelopingPOCVAHVAL(const int sessionstart, const int sessionend, 
                     break;
                 }
             }
-            DistributeBetweenTwoBuffers(DevelopingVAH_1, DevelopingVAH_2, max_bar, PriceOfMaxRange + up_offset * onetick);
-            DistributeBetweenTwoBuffers(DevelopingVAL_1, DevelopingVAL_2, max_bar, PriceOfMaxRange - down_offset * onetick + onetick);
+            DevelopingVAH[max_bar] = PriceOfMaxRange + up_offset * onetick;
+            DevelopingVAL[max_bar] = PriceOfMaxRange - down_offset * onetick + onetick;
         }
-        if (EnableDevelopingPOC) DistributeBetweenTwoBuffers(DevelopingPOC_1, DevelopingPOC_2, max_bar, PriceOfMaxRange);
+        if (EnableDevelopingPOC) DevelopingPOC[max_bar] = PriceOfMaxRange;
     }
 }
 
@@ -3185,9 +3198,6 @@ void DistributeBetweenTwoBuffers(double &buff1[], double &buff2[], int bar, doub
         // and it is different from what we get now.
         if (buff1[bar + 1] != price)
         {
-														
-																
-			 
             buff2[bar] = price; // Use new buffer to get an interrupted shift of lines.
             buff1[bar] = EMPTY_VALUE;
         }    
@@ -3195,7 +3205,6 @@ void DistributeBetweenTwoBuffers(double &buff1[], double &buff2[], int bar, doub
         {
             buff1[bar] = price; // Use the same buffer.
             buff2[bar] = EMPTY_VALUE;
-			 
         }
     }
     // Buffer #2 already had a value,
@@ -3215,17 +3224,16 @@ void DistributeBetweenTwoBuffers(double &buff1[], double &buff2[], int bar, doub
     }
 }
 
-
 //+------------------------------------------------------------------+
 //| For keystroke processing in Rectangle sessions.                  |
 //+------------------------------------------------------------------+
 void OnChartEvent(const int id, const long& lparam, const double& dparam, const string& sparam)
 {
-    if (Session != Rectangle) return;
     if (id == CHARTEVENT_KEYDOWN)
     {
         if (lparam == 82) // 'r' key pressed.
         {
+            if (_Session != Rectangle) return;
             // Find the next untaken MPR rectangle name.
             for (int i = 0; i < 1000; i++) // No more than 1000 rectangles!
             {
@@ -3254,13 +3262,77 @@ void OnChartEvent(const int id, const long& lparam, const double& dparam, const 
                 break;
             }
         }
+        else if ((TerminalInfoInteger(TERMINAL_KEYSTATE_CONTROL) < 0) && (lparam == 49) && (_Session != Daily)) // Ctrl+1
+        {
+            Print("Switching session to Daily");
+            Deinitialize();
+            _Session = Daily;
+            Initialize();
+            OnCalculateMain(Bars(Symbol(), Period()), 0);
+        }
+        else if ((TerminalInfoInteger(TERMINAL_KEYSTATE_CONTROL) < 0) && (lparam == 50) && (_Session != Weekly)) // Ctrl+2
+        {
+            Print("Switching session to Weekly");
+            Deinitialize();
+            _Session = Weekly;
+            Initialize();
+            OnCalculateMain(Bars(Symbol(), Period()), 0);
+        }
+        else if ((TerminalInfoInteger(TERMINAL_KEYSTATE_CONTROL) < 0) && (lparam == 51) && (_Session != Monthly)) // Ctrl+3
+        {
+            Print("Switching session to Monthly");
+            Deinitialize();
+            _Session = Monthly;
+            Initialize();
+            OnCalculateMain(Bars(Symbol(), Period()), 0);
+        }
+        else if ((TerminalInfoInteger(TERMINAL_KEYSTATE_CONTROL) < 0) && (lparam == 52) && (_Session != Quarterly)) // Ctrl+4
+        {
+            Print("Switching session to Quarterly");
+            Deinitialize();
+            _Session = Quarterly;
+            Initialize();
+            OnCalculateMain(Bars(Symbol(), Period()), 0);
+        }
+        else if ((TerminalInfoInteger(TERMINAL_KEYSTATE_CONTROL) < 0) && (lparam == 53) && (_Session != Semiannual)) // Ctrl+5
+        {
+            Print("Switching session to Semiannual");
+            Deinitialize();
+            _Session = Semiannual;
+            Initialize();
+            OnCalculateMain(Bars(Symbol(), Period()), 0);
+        }
+        else if ((TerminalInfoInteger(TERMINAL_KEYSTATE_CONTROL) < 0) && (lparam == 54) && (_Session != Annual)) // Ctrl+6
+        {
+            Print("Switching session to Annual");
+            Deinitialize();
+            _Session = Annual;
+            Initialize();
+            OnCalculateMain(Bars(Symbol(), Period()), 0);
+        }
+        else if ((TerminalInfoInteger(TERMINAL_KEYSTATE_CONTROL) < 0) && (lparam == 55) && (_Session != Intraday)) // Ctrl+7
+        {
+            Print("Switching session to Intraday");
+            Deinitialize();
+            _Session = Intraday;
+            Initialize();
+            OnCalculateMain(Bars(Symbol(), Period()), 0);
+        }
+        else if ((TerminalInfoInteger(TERMINAL_KEYSTATE_CONTROL) < 0) && (lparam == 56) && (_Session != Rectangle)) // Ctrl+8
+        {
+            Print("Switching session to Rectangle");
+            Deinitialize();
+            _Session = Rectangle;
+            Initialize();
+            OnCalculateMain(Bars(Symbol(), Period()), 0);
+        }
     }
 }
 
 //+------------------------------------------------------------------+
 //| Checks all alert conditions and issues alerts if needed.         |
 //+------------------------------------------------------------------+
-void CheckAlerts(const double &Open[], const double &High[], const double &Low[], const double &Close[], const datetime &Time[])
+void CheckAlerts()
 {
     // No need to check further if no alert method is chosen.
     if ((!AlertNative) && (!AlertEmail) && (!AlertPush) && (!AlertArrows)) return;
@@ -3269,7 +3341,7 @@ void CheckAlerts(const double &Open[], const double &High[], const double &Low[]
     // Skip alerts if no cross type is chosen.
     if ((!AlertOnPriceBreak) && (!AlertOnCandleClose) && (!AlertOnGapCross)) return;
     // Skip alerts if only closed bar should be checked and it has already been done.
-    if ((AlertCheckBar == CheckPreviousBar) && (LastAlertTime == Time[0])) return;
+    if ((AlertCheckBar == CheckPreviousBar) && (LastAlertTime == iTime(Symbol(), Period(), 0))) return;
 
     // Cycle through rays starts here.
     int obj_total = ObjectsTotal(ChartID(), -1, OBJ_TREND);
@@ -3286,63 +3358,63 @@ void CheckAlerts(const double &Open[], const double &High[], const double &Low[]
         
         double level = NormalizeDouble(ObjectGetDouble(ChartID(), object_name, OBJPROP_PRICE, 0), _Digits);
 
-        // Price breaks, candle closes, and gap crosses using Close[0].
+        // Price breaks, candle closes, and gap crosses using iClose(Symbol(), Period(), 0).
         if (AlertCheckBar == CheckCurrentBar)
         {
             if (AlertOnPriceBreak) // Price break alerts.
             {
-                if ((Close_prev != EMPTY_VALUE) && (((Close[0] >= level) && (Close_prev < level)) || ((Close[0] <= level) && (Close_prev > level))))
+                if ((Close_prev != EMPTY_VALUE) && (((iClose(Symbol(), Period(), 0) >= level) && (Close_prev < level)) || ((iClose(Symbol(), Period(), 0) <= level) && (Close_prev > level))))
                 {
                     DoAlerts(PriceBreak, object_name);
-                    if (AlertArrows) CreateArrowObject("ArrPB" + object_name, Time[0], Close[0], AlertArrowCodePB, AlertArrowColorPB, AlertArrowWidthPB, "Price Break");
+                    if (AlertArrows) CreateArrowObject("ArrPB" + object_name, iTime(Symbol(), Period(), 0), iClose(Symbol(), Period(), 0), AlertArrowCodePB, AlertArrowColorPB, AlertArrowWidthPB, "Price Break");
                 }
-                Close_prev = Close[0];
+                Close_prev = iClose(Symbol(), Period(), 0);
             }
             if (AlertOnCandleClose) // Candle close alerts.
             {
-                if (((Close[0] >= level) && (Close[1] < level)) || ((Close[0] <= level) && (Close[1] > level)))
+                if (((iClose(Symbol(), Period(), 0) >= level) && (iClose(Symbol(), Period(), 1) < level)) || ((iClose(Symbol(), Period(), 0) <= level) && (iClose(Symbol(), Period(), 1) > level)))
                 {
                     DoAlerts(CandleCloseCrossover, object_name);
-                    if (AlertArrows) CreateArrowObject("ArrCC" + object_name, Time[0], Close[0], AlertArrowCodeCC, AlertArrowColorCC, AlertArrowWidthCC, "Candle Close");
+                    if (AlertArrows) CreateArrowObject("ArrCC" + object_name, iTime(Symbol(), Period(), 0), iClose(Symbol(), Period(), 0), AlertArrowCodeCC, AlertArrowColorCC, AlertArrowWidthCC, "Candle Close");
                 }
             }
             if (AlertOnGapCross) // Gap cross alerts.
             {
-                if (((Open[0] > level) && (High[1] < level)) || ((Open[0] < level) && (Low[1] > level)))
+                if (((iOpen(Symbol(), Period(), 0) > level) && (iHigh(Symbol(), Period(), 1) < level)) || ((iOpen(Symbol(), Period(), 0) < level) && (iLow(Symbol(), Period(), 1) > level)))
                 {
                     DoAlerts(GapCrossover, object_name);
-                    if (AlertArrows) CreateArrowObject("ArrGC" + object_name, Time[0], level, AlertArrowCodeGC, AlertArrowColorGC, AlertArrowWidthGC, "Gap Cross");
+                    if (AlertArrows) CreateArrowObject("ArrGC" + object_name, iTime(Symbol(), Period(), 0), level, AlertArrowCodeGC, AlertArrowColorGC, AlertArrowWidthGC, "Gap Cross");
                 }
             }
         }
-        // Price breaks (using pre-previous High and previous Close), candle closes, and gap crosses using Close[1].
+        // Price breaks (using pre-previous High and previous Close), candle closes, and gap crosses using iClose(Symbol(), Period(), 1).
         else if (AlertCheckBar == CheckPreviousBar)
         {
             if (AlertOnPriceBreak) // Price break alerts.
             {
-                if (((High[1] >= level) && (Close[1] < level) && (Close[2] < level)) || ((Low[1] <= level) && (Close[1] > level) && (Close[2] > level)))
+                if (((iHigh(Symbol(), Period(), 1) >= level) && (iClose(Symbol(), Period(), 1) < level) && (iClose(Symbol(), Period(), 2) < level)) || ((iLow(Symbol(), Period(), 1) <= level) && (iClose(Symbol(), Period(), 1) > level) && (iClose(Symbol(), Period(), 2) > level)))
                 {
                     DoAlerts(PriceBreak, object_name);
-                    if (AlertArrows) CreateArrowObject("ArrPB" + object_name, Time[1], Close[1], AlertArrowCodePB, AlertArrowColorPB, AlertArrowWidthPB, "Price Break");
+                    if (AlertArrows) CreateArrowObject("ArrPB" + object_name, iTime(Symbol(), Period(), 1), iClose(Symbol(), Period(), 1), AlertArrowCodePB, AlertArrowColorPB, AlertArrowWidthPB, "Price Break");
                 }
             }
             if (AlertOnCandleClose) // Candle close alerts.
             {
-                if (((Close[1] >= level) && (Close[2] < level)) || ((Close[1] <= level) && (Close[2] > level)))
+                if (((iClose(Symbol(), Period(), 1) >= level) && (iClose(Symbol(), Period(), 2) < level)) || ((iClose(Symbol(), Period(), 1) <= level) && (iClose(Symbol(), Period(), 2) > level)))
                 {
                     DoAlerts(CandleCloseCrossover, object_name);
-                    if (AlertArrows) CreateArrowObject("ArrCC" + object_name, Time[1], Close[1], AlertArrowCodeCC, AlertArrowColorCC, AlertArrowWidthCC, "Candle Close");
+                    if (AlertArrows) CreateArrowObject("ArrCC" + object_name, iTime(Symbol(), Period(), 1), iClose(Symbol(), Period(), 1), AlertArrowCodeCC, AlertArrowColorCC, AlertArrowWidthCC, "Candle Close");
                 }
             }
             if (AlertOnGapCross) // Gap cross alerts.
             {
-                if (((Low[1] > level) && (High[2] < level)) || ((Low[2] > level) && (High[1] < level)))
+                if (((iLow(Symbol(), Period(), 1) > level) && (iHigh(Symbol(), Period(), 2) < level)) || ((iLow(Symbol(), Period(), 2) > level) && (iHigh(Symbol(), Period(), 1) < level)))
                 {
                     DoAlerts(GapCrossover, object_name);
-                    if (AlertArrows) CreateArrowObject("ArrGC" + object_name, Time[1], level, AlertArrowCodeGC, AlertArrowColorGC, AlertArrowWidthGC, "Gap Cross");
+                    if (AlertArrows) CreateArrowObject("ArrGC" + object_name, iTime(Symbol(), Period(), 1), level, AlertArrowCodeGC, AlertArrowColorGC, AlertArrowWidthGC, "Gap Cross");
                 }
             }
-            LastAlertTime = Time[0];
+            LastAlertTime = iTime(Symbol(), Period(), 0);
         }
     }
 }
@@ -3357,7 +3429,7 @@ void DoAlerts(const alert_types alert_type, const string object_name)
     // Candle Close and Gap Cross for Current Bar need to be checked against LastAlertTime.
     // All CheckPreviousBar alerts can use a single LastAlertTime (they either trigger at the start of the bar or not). The actual check is performed in CheckAlerts().
     // Using TimeCurrent() for all CheckCurrentBar alerts.
-    // Using Time[0] for all CheckPreviousBar alerts.
+    // Using iTime(Symbol(), Period(), 0) for all CheckPreviousBar alerts.
     
     // Check last alert time for Candle Close alert type.
     if ((alert_type == CandleCloseCrossover) && (AlertCheckBar == CheckCurrentBar) && (TimeCurrent() <= LastAlertTime_CandleCross)) return;
@@ -3387,5 +3459,515 @@ void DoAlerts(const alert_types alert_type, const string object_name)
     // Remember that this alert has already been sent. For CheckPreviousBar, this is done in CheckAlerts().
     if ((alert_type == CandleCloseCrossover) && (AlertCheckBar == CheckCurrentBar)) LastAlertTime_CandleCross = TimeCurrent();
     else if ((alert_type == GapCrossover) && (AlertCheckBar == CheckCurrentBar)) LastAlertTime_GapCross = TimeCurrent();
+}
+
+// Calculating onetick based on the chart parameters and settings.
+void InitializeOnetick()
+{
+    // Adaptive point multiplier. Calculate based on number of digits in the quote (before plus after the dot).
+    if (PointMultiplier == 0)
+    {
+        double quote;
+        bool success = SymbolInfoDouble(Symbol(), SYMBOL_ASK, quote);
+        if (!success)
+        {
+            Print("Failed to get price data. Error #", GetLastError(), ". Using PointMultiplier = 1.");
+            PointMultiplier_calculated = 1;
+        }
+        else
+        {
+            double chart_height = (double)ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS);
+            double chart_price_max = ChartGetDouble(ChartID(), CHART_PRICE_MAX);
+            double chart_price_min = ChartGetDouble(ChartID(), CHART_PRICE_MIN);
+            double price_diff = chart_price_max - chart_price_min;
+            if ((chart_height == 0) || (price_diff <= 0)) // If no chart yet, do it old fashioned way.
+            {
+                string s = DoubleToString(quote, _Digits);
+                int total_digits = StringLen(s);
+                // If there is a dot in a quote.
+                if (StringFind(s, ".") != -1) total_digits--; // Decrease the count of digits by one.
+                if (total_digits <= 5) PointMultiplier_calculated = 1;
+                else PointMultiplier_calculated = (int)MathPow(10, total_digits - 5);
+            }
+            else // Otherwise, calculate the multiplier so that 1 TPO = 1 pixel.
+            {
+                double price_per_pixel = price_diff / chart_height;
+                PointMultiplier_calculated = (int)MathRound(price_per_pixel / _Point);
+            }
+        }
+    }
+    else // Normal point multiplier.
+    {
+        PointMultiplier_calculated = PointMultiplier;
+    }
+
+    // Based on number of digits in PointMultiplier_calculated. -1 because if PointMultiplier_calculated < 10, it does not modify the number of digits.
+    DigitsM = _Digits - (StringLen(IntegerToString(PointMultiplier_calculated)) - 1);
+    onetick = NormalizeDouble(_Point * PointMultiplier_calculated, DigitsM);
+
+    // Adjust for TickSize granularity if needed.
+    double TickSize = SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_SIZE);
+    if (onetick < TickSize)
+    {
+        DigitsM = _Digits - (StringLen(IntegerToString((int)MathRound(TickSize / _Point))) - 1);
+        onetick = NormalizeDouble(TickSize, DigitsM);
+    }
+}
+
+bool SaveSettingsOnDisk()
+{
+    int fh = FileOpen("MP_Settings\\" + m_FileName, FILE_CSV | FILE_WRITE);
+    if (fh == INVALID_HANDLE)
+    {
+        Print("Failed to open file for writing: MP_Settings\\" + m_FileName + ". Error: " + IntegerToString(GetLastError()));
+        return false;
+    }
+
+    // Order does not matter.
+    FileWrite(fh, "Session");
+    FileWrite(fh, IntegerToString(_Session));
+
+    // These are not part of settings but are input parameters.
+    // When the indicator is reloaded due to its input parameters change, these should be compared to the new values.
+    // If the value is changed, it should be updated in the variables too.
+    // Is the indicator reloading due to the input parameters change?
+    if (GlobalVariableGet("MP-" + IntegerToString(ChartID()) + "-Parameters") > 0)
+    {
+        FileWrite(fh, "Parameter_Session");
+        FileWrite(fh, IntegerToString(Session));
+    }
+
+    FileClose(fh);
+
+    Print("Settings saved to file.");
+    return true;
+}
+
+bool LoadSettingsFromDisk()
+{
+    int fh;
+
+    if (FileIsExist("MP_Settings\\" + m_FileName))
+    {
+        fh = FileOpen("MP_Settings\\" + m_FileName, FILE_CSV | FILE_READ);
+        if (fh == INVALID_HANDLE)
+        {
+            Print("Failed to open file for reading: MP_Settings\\" + m_FileName + ". Error: " + IntegerToString(GetLastError()));
+            return false;
+        }
+    }
+    else return false;
+
+    while (!FileIsEnding(fh))
+    {
+        string var_name = FileReadString(fh);
+        string var_content = FileReadString(fh);
+        if (var_name == "Session")
+            _Session = (session_period)StringToInteger(var_content);
+        // Is indicator reloading due to the input parameters change?
+        else if (GlobalVariableGet("MP-" + IntegerToString(ChartID()) + "-Parameters") > 0)
+        {
+            // These are not part of settings but are input parameters.
+            // When the indicator is reloaded due to its input parameters change, these should be compared to the new values.
+            // If the value is changed, it should be updated in the variables too.
+            if (var_name == "Parameter_Session")
+            {
+                if ((session_period)StringToInteger(var_content) != Session) _Session = Session;
+            }
+        }
+    }
+
+    FileClose(fh);
+    Print("Settings loaded from file.");
+
+    // Is indicator reloading due to the input parameters change? Delete the flag variable.
+    if (GlobalVariableGet("MP-" + IntegerToString(ChartID()) + "-Parameters") > 0) GlobalVariableDel("MP-" + IntegerToString(ChartID()) + "-Parameters");
+
+    return true;
+}
+
+bool DeleteSettingsFile()
+{
+    string fn_with_path = "MP_Settings\\" + m_FileName;
+    if (!FileIsExist(fn_with_path)) return false; // Nothing to delete.
+    if (!FileDelete(fn_with_path))
+    {
+        Print("Failed to delete settings file: " + m_FileName + ". Error: " + IntegerToString(GetLastError()));
+        return false;
+    }
+    Print("Settings file deleted.");
+    return true;
+}
+
+int Initialize()
+{
+    InitFailed = false;
+
+     // Re-initialize global variables in case this function is called from OnChartEvent().
+    FirstRunDone = false;
+    Timer = 0;
+    NeedToRestartDrawing = false;
+    CleanedUpOn = 0;
+    LastAlertTime_CandleCross = 0;
+    LastAlertTime_GapCross = 0;
+    LastAlertTime = 0;
+    Close_prev = EMPTY_VALUE;
+    ArrowsCounter = 0;
+    CurrentBarDirection = Neutral;
+    PreviousBarDirection = Neutral;
+    NeedToReviewColors = false;
+    IntradayCrossSessionDefined = -1;
+    SessionsNumber = 0;
+    mpr_total = 0;
+    LastRecalculationTime = 0;
+
+   // Sessions to count for the object creation.
+    _SessionsToCount = SessionsToCount;
+    _SaturdaySunday = SaturdaySunday;
+    if (PeriodSeconds() > PeriodSeconds(PERIOD_D1)) _SaturdaySunday = Saturday_Sunday_Normal_Days; // Cannot distinct between normal days and Sat/Sun sessions if timeframe is higher than daily.
+
+    // Check for user Session settings.
+    if (_Session == Daily)
+    {
+        Suffix = "_D";
+        if ((PeriodSeconds() < PeriodSeconds(PERIOD_M5)) || (PeriodSeconds() > PeriodSeconds(PERIOD_M30)))
+        {
+            string alert_text = "Timeframe should be between M5 and M30 for a Daily session.";
+            if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
+            else Print("Initialization failed: " + alert_text);
+            InitFailed = true; // Soft INIT_FAILED.
+        }
+    }
+    else if (_Session == Weekly)
+    {
+        Suffix = "_W";
+        if ((PeriodSeconds() < PeriodSeconds(PERIOD_M30)) || (PeriodSeconds() > PeriodSeconds(PERIOD_H4)))
+        {
+            string alert_text = "Timeframe should be between M30 and H4 for a Weekly session.";
+            if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
+            else Print("Initialization failed: " + alert_text);
+            InitFailed = true; // Soft INIT_FAILED.
+        }
+    }
+    else if (_Session == Monthly)
+    {
+        Suffix = "_M";
+        if ((PeriodSeconds() < PeriodSeconds(PERIOD_H1)) || (PeriodSeconds() > PeriodSeconds(PERIOD_D1)))
+        {
+            string alert_text = "Timeframe should be between H1 and D1 for a Monthly session.";
+            if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
+            else Print("Initialization failed: " + alert_text);
+            InitFailed = true; // Soft INIT_FAILED.
+        }
+    }
+    else if (_Session == Quarterly)
+    {
+        Suffix = "_Q";
+        if ((PeriodSeconds() < PeriodSeconds(PERIOD_H4)) || (PeriodSeconds() > PeriodSeconds(PERIOD_D1)))
+        {
+            string alert_text = "Timeframe should be between H4 and D1 for a Quarterly session.";
+            if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
+            else Print("Initialization failed: " + alert_text);
+            InitFailed = true; // Soft INIT_FAILED.
+        }
+    }
+    else if (_Session == Semiannual)
+    {
+        Suffix = "_S";
+        if ((PeriodSeconds() < PeriodSeconds(PERIOD_H4)) || (PeriodSeconds() > PeriodSeconds(PERIOD_W1)))
+        {
+            string alert_text = "Timeframe should be between H4 and W1 for a Semiannual session.";
+            if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
+            else Print("Initialization failed: " + alert_text);
+            InitFailed = true; // Soft INIT_FAILED.
+        }
+    }
+    else if (_Session == Annual)
+    {
+        Suffix = "_A";
+        if ((PeriodSeconds() < PeriodSeconds(PERIOD_H4)) || (PeriodSeconds() > PeriodSeconds(PERIOD_W1)))
+        {
+            string alert_text = "Timeframe should be between H4 and W1 for an Annual session.";
+            if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
+            else Print("Initialization failed: " + alert_text);
+            InitFailed = true; // Soft INIT_FAILED.
+        }
+    }
+    else if (_Session == Intraday)
+    {
+        if (PeriodSeconds() > PeriodSeconds(PERIOD_M30))
+        {
+            string alert_text = "Timeframe should not be higher than M30 for an Intraday sessions.";
+            if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
+            else Print("Initialization failed: " + alert_text);
+            InitFailed = true; // Soft INIT_FAILED.
+        }
+
+        // Check if intraday user settings are valid.
+        IntradaySessionCount = 0;
+        if (!CheckIntradaySession(EnableIntradaySession1, IntradaySession1StartTime, IntradaySession1EndTime, IntradaySession1ColorScheme)) return INIT_PARAMETERS_INCORRECT;
+        if (!CheckIntradaySession(EnableIntradaySession2, IntradaySession2StartTime, IntradaySession2EndTime, IntradaySession2ColorScheme)) return INIT_PARAMETERS_INCORRECT;
+        if (!CheckIntradaySession(EnableIntradaySession3, IntradaySession3StartTime, IntradaySession3EndTime, IntradaySession3ColorScheme)) return INIT_PARAMETERS_INCORRECT;
+        if (!CheckIntradaySession(EnableIntradaySession4, IntradaySession4StartTime, IntradaySession4EndTime, IntradaySession4ColorScheme)) return INIT_PARAMETERS_INCORRECT;
+
+        // Warn user about Intraday mode
+        if (IntradaySessionCount == 0)
+        {
+            string alert_text = "Enable at least one intraday session if you want to use Intraday mode.";
+            if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
+            else Print("Initialization failed: " + alert_text);
+            InitFailed = true; // Soft INIT_FAILED.
+        }
+    }
+    else if ((_Session == Rectangle) && (SeamlessScrollingMode)) // No point in seamless scrolling mode with rectangle sessions.
+    {
+        string alert_text = "Seamless scrolling mode doesn't work with Rectangle sessions.";
+        if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
+        else Print("Initialization failed: " + alert_text);
+        InitFailed = true; // Soft INIT_FAILED.
+    }
+    
+    // Indicator Name.
+    IndicatorSetString(INDICATOR_SHORTNAME, "MarketProfile " + EnumToString(_Session));
+
+    // Adaptive point multiplier. Calculate based on number of digits in the quote (before plus after the dot).
+    if (PointMultiplier == 0)
+    {
+        double quote;
+        bool success = SymbolInfoDouble(Symbol(), SYMBOL_ASK, quote);
+        if (!success)
+        {
+            Print("Failed to get price data. Error #", GetLastError(), ". Using PointMultiplier = 1.");
+            PointMultiplier_calculated = 1;
+        }
+        else
+        {
+            string s = DoubleToString(quote, _Digits);
+            StringReplace(s, "-", ""); // Remove the minus sign for a negative price.
+            int total_digits = StringLen(s);
+            // If there is a dot in a quote.
+            if (StringFind(s, ".") != -1) total_digits--; // Decrease the count of digits by one.
+            if (total_digits <= 5) PointMultiplier_calculated = 1;
+            else PointMultiplier_calculated = (int)MathPow(10, total_digits - 5);
+        }
+    }
+    else // Normal point multiplier.
+    {
+        PointMultiplier_calculated = PointMultiplier;
+    }
+
+    // Based on number of digits in PointMultiplier_calculated. -1 because if PointMultiplier_calculated < 10, it does not modify the number of digits.
+    DigitsM = _Digits - (StringLen(IntegerToString(PointMultiplier_calculated)) - 1);
+    onetick = NormalizeDouble(_Point * PointMultiplier_calculated, DigitsM);
+
+    // Adjust for TickSize granularity if needed.
+    double TickSize = SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_SIZE);
+    if (onetick < TickSize)
+    {
+        DigitsM = _Digits - (StringLen(IntegerToString((int)MathRound(TickSize / _Point))) - 1);
+        onetick = NormalizeDouble(TickSize, DigitsM);
+    }
+
+    // Get color scheme from user input.
+    CurrentColorScheme = ColorScheme;
+
+    // To clean up potential leftovers when applying a chart template.
+    ObjectCleanup();
+
+    // Check if user wants Session mode as Rectangle or if it is a right-to-left session, or if rays should be constantly monitored, or seamless scrolling is on.
+    if ((_Session == Rectangle) || (RightToLeft) || (HideRaysFromInvisibleSessions) || (SeamlessScrollingMode))
+    {
+        EventSetMillisecondTimer(1000);
+    }
+
+    // Better do this unconditionally to avoid buffer errors.
+    SetIndexBuffer(0, DevelopingPOC, INDICATOR_DATA);
+    ArraySetAsSeries(DevelopingPOC, true);
+    PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+    PlotIndexSetInteger(0, PLOT_ARROW, 167);
+    SetIndexBuffer(1, DevelopingVAH, INDICATOR_DATA);
+    ArraySetAsSeries(DevelopingVAH, true);
+    PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+    PlotIndexSetInteger(1, PLOT_ARROW, 167);
+    SetIndexBuffer(2, DevelopingVAL, INDICATOR_DATA);
+    ArraySetAsSeries(DevelopingVAL, true);
+    PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+    PlotIndexSetInteger(2, PLOT_ARROW, 167);
+
+    ValueAreaPercentage_double = ValueAreaPercentage * 0.01;
+
+    // Initialization successful
+    return INIT_SUCCEEDED;
+}
+
+void Deinitialize()
+{
+    if (_Session == Rectangle)
+    {
+        for (int i = 0; i < mpr_total; i++)
+        {
+            ObjectCleanup(MPR_Array[i].name + "_");
+            delete MPR_Array[i];
+        }
+    }
+    else ObjectCleanup();
+}
+
+int OnCalculateMain(const int rates_total, const int prev_calculated)
+{
+    // New bars arrived?
+    // Need to reset buffers even if they are not used because otherwise there will be some garbage values in MT5.
+    if ((rates_total - prev_calculated > 1) && (CleanedUpOn != rates_total))
+    {
+        // Initialize the indicator buffers.
+        for (int i = prev_calculated; i < rates_total; i++)
+        {
+            DevelopingPOC[i] = EMPTY_VALUE;
+            DevelopingVAH[i] = EMPTY_VALUE;
+            DevelopingVAL[i] = EMPTY_VALUE;
+        }
+        if ((prev_calculated == 0) && (_Session == Rectangle)) // If prev_calculated got reset for some reason, reset the rectangles.
+        {
+            for (int i = mpr_total - 1; i >= 0 ; i--)
+            {
+                MPR_Array[i].ResetPrevTime0();
+            }
+        }
+        CleanedUpOn = rates_total; // To prevent cleaning up the buffers again and again when the platform just starts.
+    }
+
+    CheckAlerts();
+
+    // Check if seamless scrolling mode should be on, else if user requests current session, else a specific date.
+    if (SeamlessScrollingMode)
+    {
+        int last_visible_bar = (int)ChartGetInteger(ChartID(), CHART_FIRST_VISIBLE_BAR) - (int)ChartGetInteger(ChartID(), CHART_WIDTH_IN_BARS) + 1;
+        if (last_visible_bar < 0) last_visible_bar = 0;
+        StartDate = iTime(Symbol(), Period(), last_visible_bar);
+    }
+    else if (StartFromCurrentSession) StartDate = iTime(Symbol(), Period(), 0);
+    else StartDate = StartFromDate;
+
+    // Adjust date if Ignore_Saturday_Sunday is set.
+    if (_SaturdaySunday == Ignore_Saturday_Sunday)
+    {
+        // Saturday? Switch to Friday.
+        if (TimeDayOfWeek(StartDate) == 6) StartDate -= 86400;
+        // Sunday? Switch to Friday too.
+        else if (TimeDayOfWeek(StartDate) == 0) StartDate -= 2 * 86400;
+    }
+
+    // If we calculate profiles for the past sessions, no need to run it again.
+    if ((FirstRunDone) && (StartDate != iTime(Symbol(), Period(), 0))) return rates_total;
+
+    // Delay the update of Market Profile if ThrottleRedraw is given.
+    if ((ThrottleRedraw > 0) && (Timer > 0))
+    {
+        if ((int)TimeLocal() - Timer < ThrottleRedraw) return rates_total;
+    }
+
+    // Calculate rectangle.
+    if (_Session == Rectangle) // Everything becomes very simple if rectangle sessions are used.
+    {
+        CheckRectangles(rates_total);
+        Timer = (int)TimeLocal();
+        return rates_total;
+    }
+
+    // Recalculate everything if there were missing bars or something like that. Or if RightToLeft is on and a new right-most session arrived.
+    if ((rates_total - prev_calculated > 1) || (NeedToRestartDrawing))
+    {
+        FirstRunDone = false;
+        ObjectCleanup();
+        NeedToRestartDrawing = false;
+        if (EnableDevelopingPOC)
+        {
+            // Initialize the DPOC buffers.
+            ArrayInitialize(DevelopingPOC, EMPTY_VALUE); 
+        }
+    }
+
+    // Get start and end bar numbers of the given session.
+    int sessionend = FindSessionEndByDate(StartDate, rates_total); // Finding the session's right-most bar using the date of the previous session or starting date.
+    int sessionstart = FindSessionStart(sessionend, rates_total); // Finding the session's left-most bar using its end (right-most) bar.
+
+    if (sessionstart == -1)
+    {
+        Print("Something went wrong! Waiting for data to load.");
+        return prev_calculated;
+    }
+
+    int SessionToStart = 0;
+    // If all sessions have already been counted, jump to the current one.
+    if (FirstRunDone) SessionToStart = _SessionsToCount - 1;
+    else
+    {
+        // Move back to the oldest session to count to start from it.
+        for (int i = 1; i < _SessionsToCount; i++)
+        {
+            sessionend = sessionstart + 1;
+            if (sessionend >= rates_total) return prev_calculated;
+            if (_SaturdaySunday == Ignore_Saturday_Sunday)
+            {
+                // Pass through Sunday and Saturday.
+                while ((TimeDayOfWeek(iTime(Symbol(), Period(), sessionend)) == 0) || (TimeDayOfWeek(iTime(Symbol(), Period(), sessionend)) == 6))
+                {
+                    sessionend++;
+                    if (sessionend >= rates_total) break;
+                }
+            }
+            sessionstart = FindSessionStart(sessionend, rates_total);
+        }
+    }
+
+    // We begin from the oldest session coming to the current session or to StartFromDate.
+    for (int i = SessionToStart; i < _SessionsToCount; i++)
+    {
+        if (_Session == Intraday)
+        {
+            if (!ProcessIntradaySession(sessionstart, sessionend, i, rates_total)) return 0;
+        }
+        else
+        {
+            if (_Session == Daily) Max_number_of_bars_in_a_session = PeriodSeconds(PERIOD_D1) / PeriodSeconds();
+            else if (_Session == Weekly) Max_number_of_bars_in_a_session = 604800 / PeriodSeconds();
+            else if (_Session == Monthly) Max_number_of_bars_in_a_session = 2678400 / PeriodSeconds();
+            else if (_Session == Quarterly) Max_number_of_bars_in_a_session = 8035200 / PeriodSeconds();
+            else if (_Session == Semiannual) Max_number_of_bars_in_a_session = 16070400 / PeriodSeconds();
+            else if (_Session == Annual) Max_number_of_bars_in_a_session = 31622400 / PeriodSeconds();
+            if (_SaturdaySunday == Append_Saturday_Sunday)
+            {
+                // The start is on Sunday - add remaining time.
+                if (TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart)) == 0) Max_number_of_bars_in_a_session += (24 * 3600 - (TimeHour(iTime(Symbol(), Period(), sessionstart)) * 3600 + TimeMinute(iTime(Symbol(), Period(), sessionstart)) * 60)) / PeriodSeconds();
+                // The end is on Saturday. +1 because even 0:00 bar deserves a bar.
+                if (TimeDayOfWeek(iTime(Symbol(), Period(), sessionend)) == 6) Max_number_of_bars_in_a_session += ((TimeHour(iTime(Symbol(), Period(), sessionend)) * 3600 + TimeMinute(iTime(Symbol(), Period(), sessionend)) * 60)) / PeriodSeconds() + 1;
+            }
+            if (!ProcessSession(sessionstart, sessionend, i, rates_total)) return 0;
+        }
+
+        // Go to the newer session only if there is one or more left.
+        if (_SessionsToCount - i > 1)
+        {
+            sessionstart = sessionend - 1;
+            if (_SaturdaySunday == Ignore_Saturday_Sunday)
+            {
+                // Pass through Sunday and Saturday.
+                while ((TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart)) == 0) || (TimeDayOfWeek(iTime(Symbol(), Period(), sessionstart)) == 6))
+                {
+                    sessionstart--;
+                    if (sessionstart == 0) break;
+                }
+            }
+            sessionend = FindSessionEndByDate(iTime(Symbol(), Period(), sessionstart), rates_total);
+        }
+    }
+
+    if ((ShowValueAreaRays != None) || (ShowMedianRays != None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays))) CheckRays();
+
+    FirstRunDone = true;
+
+    Timer = (int)TimeLocal();
+
+    return rates_total;
 }
 //+------------------------------------------------------------------+
