@@ -1,11 +1,11 @@
 //+------------------------------------------------------------------+
 //|                                                MarketProfile.mq4 |
-//|                             Copyright © 2010-2025, EarnForex.com |
+//|                             Copyright © 2010-2026, EarnForex.com |
 //|                                       https://www.earnforex.com/ |
 //+------------------------------------------------------------------+
 #property copyright "EarnForex.com"
 #property link      "https://www.earnforex.com/indicators/MarketProfile/"
-#property version   "1.24"
+#property version   "1.25"
 #property strict
 
 #property description "Displays the Market Profile indicator. Supports the following sessions:"
@@ -117,6 +117,8 @@ input bool           SeamlessScrollingMode   = false;           // SeamlessScrol
 input bool           EnableDevelopingPOC     = false;           // Enable Developing POC
 input bool           EnableDevelopingVAHVAL  = false;           // Enable Developing VAH/VAL
 input int            ValueAreaPercentage     = 70;              // ValueAreaPercentage: Percentage of TPO's inside Value Area.
+input string         InstancePrefix          = "";              // InstancePrefix: prefix for objects to allow multiple instances.
+input ENUM_TIMEFRAMES TPOTimeframe           = PERIOD_CURRENT;  // TPOTimeframe: timeframe for TPO data. Equal or higher than chart's.
 
 input group "Colors and looks"
 input string ____Colors_and_looks = "================";
@@ -149,6 +151,7 @@ input color          SinglePrintColor         = clrGold;
 input bool           SinglePrintRays          = false;          // SinglePrintRays: mark Single Print edges with rays.
 input ENUM_LINE_STYLE SinglePrintRayStyle     = STYLE_SOLID;
 input int            SinglePrintRayWidth      = 1;
+input ways_to_stop_rays SPRaysUntilIntersection = Stop_No_Rays; // SPRaysUntilIntersection: which Single Print rays stop when hit another MP.
 input color          ProminentMedianColor     = clrYellow;
 input ENUM_LINE_STYLE ProminentMedianStyle    = STYLE_SOLID;
 input int            ProminentMedianWidth     = 4;
@@ -162,6 +165,7 @@ input string ____Performance = "================";
 input int            PointMultiplier          = 0;      // PointMultiplier: higher value = fewer objects. 0 - adaptive.
 input int            ThrottleRedraw           = 0;      // ThrottleRedraw: delay (in seconds) for updating Market Profile.
 input bool           DisableHistogram         = false;  // DisableHistogram: do not draw profile, VAH, VAL, and POC still visible.
+input bool           EnableOldProfilesCleanup = false;  // EnableOldProfilesCleanup: delete old profiles exceeding SessionsToCount.
 
 input group "Alerts"
 input string ____Alerts = "================";
@@ -213,6 +217,8 @@ input string ____Miscellaneous = "================";
 input sat_sun_solution SaturdaySunday                 = Saturday_Sunday_Normal_Days;
 input bool             DisableAlertsOnWrongTimeframes = false;  // Disable alerts on wrong timeframes.
 input int              ProminentMedianPercentage      = 101;    // Percentage of Median TPOs out of total for a Prominent one.
+input bool             ShowToggleButton               = false;  // ShowToggleButton: show on/off button.
+input ENUM_BASE_CORNER ToggleButtonCorner             = CORNER_LEFT_UPPER; // ToggleButtonCorner: chart corner for the toggle button.
 
 int PointMultiplier_calculated;     // Will have to be calculated based number digits in a quote if PointMultiplier input is 0.
 int DigitsM;                        // Number of digits normalized based on PointMultiplier_calculated.
@@ -234,6 +240,12 @@ int ArrowsCounter = 0;              // Counter for naming of alert arrows.
 sat_sun_solution _SaturdaySunday;   // To change the input value if incompatible with timeframe.
 session_period _Session;            // Can be modified during runtime (hotkeys).
 string m_FileName;                  // File name to store the session type.
+string ObjPrefix;                   // Prefix for chart object names based on InstancePrefix input.
+bool IndicatorHidden = false;       // True when indicator objects are hidden via the toggle button.
+string ToggleButtonName;            // Name of the toggle button object.
+bool HiddenObjectsDrawn = false;    // True when objects have been drawn at least once while hidden.
+int TPOSize = 1;                    // Number of chart bars each TPO spans (1 when TPOTimeframe == chart's TF).
+int _TPOTimeframe;                  // Resolved TPO timeframe (never lower than chart's).
 
 // Used for ColorBullBear.
 bar_direction CurrentBarDirection = Neutral;
@@ -290,7 +302,9 @@ double DevelopingPOC[], DevelopingVAH[], DevelopingVAL[]; // Indicator buffers f
 //+------------------------------------------------------------------+
 int OnInit()
 {
-    m_FileName = "MP_" + IntegerToString(ChartID()) + ".txt";
+    ObjPrefix = InstancePrefix + "_";
+    ToggleButtonName = ObjPrefix + "MPToggle";
+    m_FileName = ObjPrefix + "MP_" + IntegerToString(ChartID()) + ".txt";
 
     if (!LoadSettingsFromDisk()) // Trying to read the saved session type from file.
     {
@@ -305,9 +319,11 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
+    ObjectDelete(ChartID(), ToggleButtonName);
+
     Deinitialize();
     
-    if (reason == REASON_PARAMETERS) GlobalVariableSet("MP-" + IntegerToString(ChartID()) + "-Parameters", 1);
+    if (reason == REASON_PARAMETERS) GlobalVariableSet(ObjPrefix + "MP-" + IntegerToString(ChartID()) + "-Parameters", 1);
 
     if ((reason == REASON_REMOVE) || (reason == REASON_CHARTCLOSE) || (reason == REASON_PROGRAM))
     {
@@ -971,7 +987,7 @@ datetime PutDot(const double price, const int start_bar, const int range, const 
 
         // Find the time:
         int x = -1;
-        for (int i = range + 1; i > 0; i--) // + 1 to get a bit "lefter" time in converted_time, and actual dot's time into prev_time.
+        for (int i = (range + 1) * TPOSize; i > 0; i--) // + 1 to get a bit "lefter" time in converted_time, and actual dot's time into prev_time.
         {
             prev_time = converted_time;
             if (converted_time == Time[0]) // First time stepped into existing candles.
@@ -991,9 +1007,10 @@ datetime PutDot(const double price, const int start_bar, const int range, const 
     }
     else
     {
-        if (start_bar - (range + 1) < 0) time_end = Time[0] + PeriodSeconds(); // Protection from 'Array out of range' error.
-        else time_end = Time[start_bar - (range + 1)];
-        time_start = Time[start_bar - range];
+        if (start_bar - (range + 1) * TPOSize < 0) time_end = Time[0] + PeriodSeconds(); // Protection from 'Array out of range' error.
+        else time_end = Time[start_bar - (range + 1) * TPOSize];
+        if (start_bar - range * TPOSize < 0) time_start = Time[0];
+        else time_start = Time[start_bar - range * TPOSize];
     }
 
     if (ObjectFind(0, rectangle_prefix + "MP" + Suffix + LastName) >= 0) // Need to move the rectangle.
@@ -1083,6 +1100,7 @@ datetime PutDot(const double price, const int start_bar, const int range, const 
 //+------------------------------------------------------------------+
 void ObjectCleanup(string rectangle_prefix = "")
 {
+    rectangle_prefix = ObjPrefix + rectangle_prefix;
     // Delete all rectangles with set prefix.
     ObjectsDeleteAll(0, rectangle_prefix + "MP" + Suffix, 0, OBJ_RECTANGLE);
     ObjectsDeleteAll(0, rectangle_prefix + "Median" + Suffix, 0, OBJ_TREND);
@@ -1211,27 +1229,33 @@ bool CheckIntradaySession(const bool enable, const string start_time, const stri
 //+------------------------------------------------------------------+
 bool ProcessSession(const int sessionstart, const int sessionend, const int i, CRectangleMP* rectangle = NULL)
 {
-    string rectangle_prefix = ""; // Only for rectangle sessions.
+    string rectangle_prefix = ObjPrefix; // Only for rectangle sessions.
 
     if (sessionstart >= Bars) return false; // Data not yet ready.
     if (onetick == 0) return false; // onetick cannot be zero.
 
-    double SessionMax = DBL_MIN, SessionMin = DBL_MAX;
+//    double SessionMax = DBL_MIN, SessionMin = DBL_MAX;
+
+    // Map session boundaries to higher-TF bar indices when using multi-timeframe TPO.
+    int htf_sessionstart = sessionstart;
+    int htf_sessionend = sessionend;
+    if (TPOSize > 1)
+    {
+        htf_sessionstart = iBarShift(Symbol(), _TPOTimeframe, Time[sessionstart]);
+        htf_sessionend = iBarShift(Symbol(), _TPOTimeframe, Time[sessionend]);
+        if (htf_sessionstart < 0) htf_sessionstart = 0;
+        if (htf_sessionend < 0) htf_sessionend = 0;
+    }
 
     // Find the session's high and low.
-    for (int bar = sessionstart; bar >= sessionend; bar--)
-    {
-        if (High[bar] > SessionMax) SessionMax = High[bar];
-        if (Low[bar] < SessionMin) SessionMin = Low[bar];
-    }
-    SessionMax = NormalizeDouble(SessionMax, DigitsM);
-    SessionMin = NormalizeDouble(SessionMin, DigitsM);
+    double SessionMax = iHigh(Symbol(), _TPOTimeframe, iHighest(Symbol(), _TPOTimeframe, MODE_HIGH, htf_sessionstart - htf_sessionend + 1, htf_sessionend));
+    double SessionMin = iLow( Symbol(), _TPOTimeframe, iLowest( Symbol(), _TPOTimeframe, MODE_LOW,  htf_sessionstart - htf_sessionend + 1, htf_sessionend));
 
     int session_counter = i;
 
     if (_Session == Rectangle)
     {
-        rectangle_prefix = rectangle.name + "_";
+        rectangle_prefix = ObjPrefix + rectangle.name + "_";
         if (SessionMax > rectangle.RectanglePriceMax) SessionMax = NormalizeDouble(rectangle.RectanglePriceMax, DigitsM);
         if (SessionMin < rectangle.RectanglePriceMin) SessionMin = NormalizeDouble(rectangle.RectanglePriceMin, DigitsM);
     }
@@ -1346,12 +1370,14 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, C
         price = NormalizeDouble(price, DigitsM);
         int range = 0; // Distance from first bar to the current bar.
 
-        // Going through all bars of the session to see if the price was encountered here.
-        for (int bar = sessionstart; bar >= sessionend; bar--)
+        for (int bar = htf_sessionstart; bar >= htf_sessionend; bar--)
         {
             // Price is encountered in the given bar.
-            if ((price >= Low[bar]) && (price <= High[bar]))
+            if ((price >= iLow(Symbol(), _TPOTimeframe, bar)) && (price <= iHigh(Symbol(), _TPOTimeframe, bar)))
             {
+                // Map higher-TF bar to chart bar index for object naming and positioning.
+                int chart_bar = (TPOSize > 1) ? iBarShift(Symbol(), Period(), iTime(Symbol(), _TPOTimeframe, bar)) : bar;
+
                 // Update maximum distance from session's start to the found bar (needed for Median).
                 // Using the center-most Median if there are more than one.
                 if ((MaxRange < range) || ((MaxRange == range) && (MathAbs(price - (SessionMin + (SessionMax - SessionMin) / 2)) < DistanceToCenter)))
@@ -1366,9 +1392,11 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, C
                     if (ColorBullBear)
                     {
                         // These are needed in all cases when we color dots according to bullish/bearish bars.
-                        if (Close[bar] == Open[bar]) CurrentBarDirection = Neutral;
-                        else if (Close[bar] > Open[bar]) CurrentBarDirection = Bullish;
-                        else if (Close[bar] < Open[bar]) CurrentBarDirection = Bearish;
+                        double close_price = iClose(Symbol(), _TPOTimeframe, bar);
+                        double open_price = iOpen(Symbol(), _TPOTimeframe, bar);
+                        if (close_price == open_price) CurrentBarDirection = Neutral;
+                        else if (close_price > open_price) CurrentBarDirection = Bullish;
+                        else if (close_price < open_price) CurrentBarDirection = Bearish;
 
                         // This is for recoloring of the dots from the current (most-latest) bar.
                         if (bar == 0)
@@ -1383,11 +1411,11 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, C
                     }
 
                     // Draws rectangle.
-                    if (!RightToLeft) PutDot(price, sessionstart, range, bar - sessionstart, rectangle_prefix);
+                    if (!RightToLeft) PutDot(price, sessionstart, range, chart_bar - sessionstart, rectangle_prefix);
                     // Inverted drawing.
                     else
                     {
-                        converted_end_time = PutDot(price, sessionstart, range, bar - sessionstart, rectangle_prefix, converted_time);
+                        converted_end_time = PutDot(price, sessionstart, range, chart_bar - sessionstart, rectangle_prefix, converted_time);
                         if (converted_end_time < min_converted_end_time) min_converted_end_time = converted_end_time; // Find the leftmost time to use for the left border of the value area.
                     }
                 }
@@ -1507,7 +1535,7 @@ bool ProcessSession(const int sessionstart, const int sessionend, const int i, C
     // Delete old Median.
     ObjectDelete(rectangle_prefix + "Median" + Suffix + LastName);
     // Draw a new one.
-    index = MathMax(sessionstart - MaxRange - 1, 0);
+    index = MathMax(sessionstart - (MaxRange + 1) * TPOSize, 0);
     datetime time_start, time_end;
     if ((RightToLeft) && ((sessionend == 0) || (_Session == Rectangle)))
     {
@@ -1982,8 +2010,8 @@ int TimeAbsoluteDay(const datetime time)
 }
 
 //+------------------------------------------------------------------+
-//| Checks whether Median/VA rays are required and whether they      |
-//| should be cut.                                                   |
+//| Checks whether Median/VA/Single Print rays are required and      |
+//| whether they should be cut.                                      |
 //+------------------------------------------------------------------+
 void CheckRays()
 {
@@ -1991,9 +2019,9 @@ void CheckRays()
     {
         string last_name = " " + TimeToString(RememberSessionStart[i]);
         string suffix = RememberSessionSuffix[i];
-        string rec_name = "";
+        string rec_name = ObjPrefix;
 
-        if (_Session == Rectangle) rec_name = MPR_Array[i].name + "_";
+        if (_Session == Rectangle) rec_name = ObjPrefix + MPR_Array[i].name + "_";
 
         // Process Single Print Rays to hide those that shouldn't be visible.
         if ((HideRaysFromInvisibleSessions) && (SinglePrintRays))
@@ -2136,6 +2164,22 @@ void CheckRays()
                 {
                     CheckRayIntersections(rec_name + "Value Area HighRay" + suffix + last_name, i + 1);
                     CheckRayIntersections(rec_name + "Value Area LowRay" + suffix + last_name, i + 1);
+                }
+            }
+        }
+
+        if ((SPRaysUntilIntersection != Stop_No_Rays) && (SinglePrintRays) && (SessionsNumber - i >= 2))
+        {
+            if ((SPRaysUntilIntersection == Stop_All_Rays)
+                    || ((SPRaysUntilIntersection == Stop_All_Rays_Except_Prev_Session) && (SessionsNumber - i > 2))
+                    || ((SPRaysUntilIntersection == Stop_Only_Previous_Session) && (SessionsNumber - i == 2)))
+            {
+                int obj_total = ObjectsTotal(ChartID(), 0, OBJ_TREND);
+                for (int j = 0; j < obj_total; j++)
+                {
+                    string obj_name = ObjectName(ChartID(), j, 0, OBJ_TREND);
+                    if (StringSubstr(obj_name, 0, StringLen(rec_name + "MPSPR" + suffix + last_name)) != rec_name + "MPSPR" + suffix + last_name) continue; // Not this session's Single Print ray.
+                    CheckRayIntersections(obj_name, i + 1);
                 }
             }
         }
@@ -2476,6 +2520,8 @@ int CalculateProperColor()
 
 void OnTimer()
 {
+    if (IndicatorHidden) return;
+
     if (GetTickCount() - LastRecalculationTime < 500) return; // Do not recalculate on timer if less than 500 ms passed.
     if (HideRaysFromInvisibleSessions) CheckRays(); // Should be checked regularly if the input parameter requires ray hiding/unhiding.
 
@@ -2650,7 +2696,7 @@ void CheckRectangles()
     for (int i = 0; i < mpr_total; i++)
         MPR_Array[i].Process(i);
 
-    if ((ShowValueAreaRays != None) || (ShowMedianRays != None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays))) CheckRays();
+    if ((ShowValueAreaRays != None) || (ShowMedianRays != None) || ((HideRaysFromInvisibleSessions || SPRaysUntilIntersection != Stop_No_Rays) && (SinglePrintRays))) CheckRays();
 
     LastRecalculationTime = GetTickCount(); // Remember last calculation time.
 }
@@ -2984,7 +3030,7 @@ void RedrawLastSession()
         }
     }
 
-    if ((ShowValueAreaRays != None) || (ShowMedianRays != None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays))) CheckRays();
+    if ((ShowValueAreaRays != None) || (ShowMedianRays != None) || ((HideRaysFromInvisibleSessions || SPRaysUntilIntersection != Stop_No_Rays) && (SinglePrintRays))) CheckRays();
 }
 
 //+----------------------------------------------------------------------------------+
@@ -2992,15 +3038,31 @@ void RedrawLastSession()
 //+----------------------------------------------------------------------------------+
 void CalculateDevelopingPOCVAHVAL(int sessionstart, int sessionend, CRectangleMP* rectangle = NULL)
 {
-    // Cycle through all possible end bars to calculate the Developing POC.
-    for (int max_bar = sessionstart; max_bar >= sessionend; max_bar--)
+    // Map session boundaries to higher-TF bar indices.
+    int htf_start = sessionstart;
+    int htf_end = sessionend;
+    if (TPOSize > 1)
     {
-        if ((DevelopingPOC[max_bar] != EMPTY_VALUE) && (max_bar > 1)) continue; // One of the buffers already filled and it isn't/wasn't the latest bar - skip. Valid only for non-Rectangle sessions.
+        htf_start = iBarShift(Symbol(), _TPOTimeframe, Time[sessionstart]);
+        htf_end = iBarShift(Symbol(), _TPOTimeframe, Time[sessionend]);
+        if (htf_start < 0) htf_start = 0;
+        if (htf_end < 0) htf_end = 0;
+    }
 
-        // Determine the local price minimum and maximum.
-        double LocalMin =  Low[ iLowest(Symbol(), Period(), MODE_LOW,  sessionstart - max_bar + 1, max_bar)];
-        double LocalMax = High[iHighest(Symbol(), Period(), MODE_HIGH, sessionstart - max_bar + 1, max_bar)];
-        
+    // Cycle through all possible end bars to calculate the Developing POC.
+    for (int htf_max = htf_start; htf_max >= htf_end; htf_max--)
+    {
+        // Determine which chart bar this HTF bar corresponds to.
+        int max_bar = (TPOSize > 1) ? iBarShift(Symbol(), Period(), iTime(Symbol(), _TPOTimeframe, htf_max)) : htf_max;
+        if (max_bar < 0) max_bar = 0;
+        if (max_bar >= Bars) continue;
+
+        if (DevelopingPOC[max_bar] != EMPTY_VALUE && htf_max > 1) continue; // One of the buffers already filled and it isn't/wasn't the latest bar - skip. Valid only for non-Rectangle sessions.
+
+        // Determine the local price minimum and maximum from higher-TF bars.
+        double LocalMax = iHigh(Symbol(), _TPOTimeframe, iHighest(Symbol(), _TPOTimeframe, MODE_HIGH, htf_start - htf_max + 1, htf_max));
+        double LocalMin = iLow( Symbol(), _TPOTimeframe, iLowest( Symbol(), _TPOTimeframe, MODE_LOW,  htf_start - htf_max + 1, htf_max));
+
         // For rectangles, further restrictions may apply.
         if (_Session == Rectangle)
         {
@@ -3025,11 +3087,11 @@ void CalculateDevelopingPOCVAHVAL(int sessionstart, int sessionend, CRectangleMP
         {
             price = NormalizeDouble(price, DigitsM);
             int range = 0; // Distance from first bar to the current bar.
-            // Going through all bars of the session until the current max_bar to see if the price was encountered here.
-            for (int bar = sessionstart; bar >= max_bar; bar--)
+            // Going through all bars of the session until the current htf_max to see if the price was encountered here.
+            for (int bar = htf_start; bar >= htf_max; bar--)
             {
                 // Price is encountered in the given bar.
-                if ((price >= Low[bar]) && (price <= High[bar]))
+                if ((price >= iLow(Symbol(), _TPOTimeframe, bar)) && (price <= iHigh(Symbol(), _TPOTimeframe, bar)))
                 {
                     // Update maximum distance from session's start to the found bar for the Developing POC.
                     // Using the center-most POC if there are more than one.
@@ -3085,8 +3147,32 @@ void CalculateDevelopingPOCVAHVAL(int sessionstart, int sessionend, CRectangleMP
             }
             DevelopingVAH[max_bar] = PriceOfMaxRange + up_offset * onetick;
             DevelopingVAL[max_bar] = PriceOfMaxRange - down_offset * onetick + onetick;
+            // Fill intermediate chart bars within this HTF bar with the same values.
+            if (TPOSize > 1)
+            {
+                int next_chart_bar = (htf_max > htf_end) ? iBarShift(Symbol(), Period(), iTime(Symbol(), _TPOTimeframe, htf_max - 1)) : sessionend;
+                if (next_chart_bar == sessionend) next_chart_bar--;
+                for (int fill = max_bar - 1; fill > next_chart_bar; fill--)
+                {
+                    DevelopingVAH[fill] = DevelopingVAH[max_bar];
+                    DevelopingVAL[fill] = DevelopingVAL[max_bar];
+                }
+            }
         }
-        if (EnableDevelopingPOC) DevelopingPOC[max_bar] = PriceOfMaxRange;
+        if (EnableDevelopingPOC)
+        {
+            DevelopingPOC[max_bar] = PriceOfMaxRange;
+            if (TPOSize > 1)
+            {
+                // Fill intermediate chart bars within this HTF bar with the same Developing POC value.
+                int next_chart_bar = (htf_max > htf_end) ? iBarShift(Symbol(), Period(), iTime(Symbol(), _TPOTimeframe, htf_max - 1)) : sessionend;
+                if (next_chart_bar == sessionend) next_chart_bar--;
+                for (int fill = max_bar - 1; fill > next_chart_bar; fill--)
+                {
+                    DevelopingPOC[fill] = PriceOfMaxRange;
+                }
+            }
+        }
     }
 }
 
@@ -3193,6 +3279,14 @@ void OnChartEvent(const int id, const long& lparam, const double& dparam, const 
             OnCalculateMain(Bars(Symbol(), Period()), 0);
         }
     }
+    else if (id == CHARTEVENT_OBJECT_CLICK)
+    {
+        if ((ShowToggleButton) && (sparam == ToggleButtonName))
+        {
+            ToggleIndicatorVisibility();
+            ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_STATE, false); // Reset button state.
+        }
+    }
 }
 
 //+------------------------------------------------------------------+
@@ -3214,6 +3308,9 @@ void CheckAlerts()
     for (int i = 0; i < obj_total; i++)
     {
         string object_name = ObjectName(ChartID(), i, -1, OBJ_TREND);
+
+        // Skip objects not belonging to this instance.
+        if ((ObjPrefix != "") && (StringSubstr(object_name, 0, StringLen(ObjPrefix)) != ObjPrefix)) continue;
         
         // Skip if it is either a non-ray or if this particular ray shouldn't get alerted.
         if (!(((AlertForMedian) && (StringFind(object_name, "Median Ray") > -1)) ||
@@ -3392,12 +3489,14 @@ bool SaveSettingsOnDisk()
     // Order does not matter.
     FileWrite(fh, "Session");
     FileWrite(fh, IntegerToString(_Session));
+    FileWrite(fh, "IndicatorHidden");
+    FileWrite(fh, IntegerToString(IndicatorHidden));
 
     // These are not part of settings but are input parameters.
     // When the indicator is reloaded due to its input parameters change, these should be compared to the new values.
     // If the value is changed, it should be updated in the variables too.
     // Is the indicator reloading due to the input parameters change?
-    if (GlobalVariableGet("MP-" + IntegerToString(ChartID()) + "-Parameters") > 0)
+    if (GlobalVariableGet(ObjPrefix + "MP-" + IntegerToString(ChartID()) + "-Parameters") > 0)
     {
         FileWrite(fh, "Parameter_Session");
         FileWrite(fh, IntegerToString(Session));
@@ -3430,8 +3529,10 @@ bool LoadSettingsFromDisk()
         string var_content = FileReadString(fh);
         if (var_name == "Session")
             _Session = (session_period)StringToInteger(var_content);
+        else if (var_name == "IndicatorHidden")
+            IndicatorHidden = (bool)StringToInteger(var_content);
         // Is indicator reloading due to the input parameters change?
-        else if (GlobalVariableGet("MP-" + IntegerToString(ChartID()) + "-Parameters") > 0)
+        else if (GlobalVariableGet(ObjPrefix + "MP-" + IntegerToString(ChartID()) + "-Parameters") > 0)
         {
             // These are not part of settings but are input parameters.
             // When the indicator is reloaded due to its input parameters change, these should be compared to the new values.
@@ -3447,7 +3548,7 @@ bool LoadSettingsFromDisk()
     Print("Settings loaded from file.");
 
     // Is indicator reloading due to the input parameters change? Delete the flag variable.
-    if (GlobalVariableGet("MP-" + IntegerToString(ChartID()) + "-Parameters") > 0) GlobalVariableDel("MP-" + IntegerToString(ChartID()) + "-Parameters");
+    if (GlobalVariableGet(ObjPrefix + "MP-" + IntegerToString(ChartID()) + "-Parameters") > 0) GlobalVariableDel(ObjPrefix + "MP-" + IntegerToString(ChartID()) + "-Parameters");
 
     return true;
 }
@@ -3485,17 +3586,24 @@ int Initialize()
     SessionsNumber = 0;
     mpr_total = 0;
     LastRecalculationTime = 0;
+    HiddenObjectsDrawn = false;
 
     _SessionsToCount = SessionsToCount; // Sessions to count for the object creation.
     
     _SaturdaySunday = SaturdaySunday;
-    if (Period() > PERIOD_D1) _SaturdaySunday = Saturday_Sunday_Normal_Days; // Cannot distinct between normal days and Sat/Sun sessions if timeframe is higher than daily.
+
+    // Resolve TPO timeframe: use chart's if PERIOD_CURRENT or if selected is lower than chart's.
+    _TPOTimeframe = (TPOTimeframe == PERIOD_CURRENT) ? Period() : TPOTimeframe;
+    if (PeriodSeconds(_TPOTimeframe) < PeriodSeconds()) _TPOTimeframe = Period();
+    TPOSize = (int)(PeriodSeconds(_TPOTimeframe) / PeriodSeconds());
+    if (TPOSize < 1) TPOSize = 1;
+    if (PeriodSeconds(_TPOTimeframe)  > PERIOD_D1) _SaturdaySunday = Saturday_Sunday_Normal_Days; // Cannot distinct between normal days and Sat/Sun sessions if timeframe is higher than daily.
 
     // Check for user Session settings.
     if (_Session == Daily)
     {
         Suffix = "_D";
-        if ((Period() < PERIOD_M5) || (Period() > PERIOD_M30))
+        if ((_TPOTimeframe < PERIOD_M5) || (_TPOTimeframe > PERIOD_M30))
         {
             string alert_text = "Timeframe should be between M5 and M30 for a Daily session.";
             if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
@@ -3506,7 +3614,7 @@ int Initialize()
     else if (_Session == Weekly)
     {
         Suffix = "_W";
-        if ((Period() < PERIOD_M30) || (Period() > PERIOD_H4))
+        if ((_TPOTimeframe < PERIOD_M30) || (_TPOTimeframe > PERIOD_H4))
         {
             string alert_text = "Timeframe should be between M30 and H4 for a Weekly session.";
             if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
@@ -3517,7 +3625,7 @@ int Initialize()
     else if (_Session == Monthly)
     {
         Suffix = "_M";
-        if ((Period() < PERIOD_H1) || (Period() > PERIOD_D1))
+        if ((_TPOTimeframe < PERIOD_H1) || (_TPOTimeframe > PERIOD_D1))
         {
             string alert_text = "Timeframe should be between H1 and D1 for a Monthly session.";
             if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
@@ -3528,7 +3636,7 @@ int Initialize()
     else if (_Session == Quarterly)
     {
         Suffix = "_Q";
-        if ((Period() < PERIOD_H4) || (Period() > PERIOD_D1))
+        if ((_TPOTimeframe < PERIOD_H4) || (_TPOTimeframe > PERIOD_D1))
         {
             string alert_text = "Timeframe should be between H4 and D1 for a Quarterly session.";
             if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
@@ -3539,7 +3647,7 @@ int Initialize()
     else if (_Session == Semiannual)
     {
         Suffix = "_S";
-        if ((Period() < PERIOD_H4) || (Period() > PERIOD_W1))
+        if ((_TPOTimeframe < PERIOD_H4) || (_TPOTimeframe > PERIOD_W1))
         {
             string alert_text = "Timeframe should be between H4 and W1 for a Semiannual session.";
             if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
@@ -3550,7 +3658,7 @@ int Initialize()
     else if (_Session == Annual)
     {
         Suffix = "_A";
-        if ((Period() < PERIOD_H4) || (Period() > PERIOD_W1))
+        if ((_TPOTimeframe < PERIOD_H4) || (_TPOTimeframe > PERIOD_W1))
         {
             string alert_text = "Timeframe should be between H4 and W1 for an Annual session.";
             if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
@@ -3560,7 +3668,7 @@ int Initialize()
     }
     else if (_Session == Intraday)
     {
-        if (Period() > PERIOD_M30)
+        if (_TPOTimeframe > PERIOD_M30)
         {
             string alert_text = "Timeframe should not be higher than M30 for an Intraday sessions.";
             if (!DisableAlertsOnWrongTimeframes) Alert(alert_text);
@@ -3592,7 +3700,7 @@ int Initialize()
         InitFailed = true; // Soft INIT_FAILED.
     }
     // Indicator Name.
-    IndicatorShortName("MarketProfile " + EnumToString(_Session));
+    IndicatorSetString(INDICATOR_SHORTNAME, ObjPrefix + "MarketProfile " + EnumToString(_Session));
 
     // Get color scheme from user input.
     CurrentColorScheme = ColorScheme;
@@ -3616,11 +3724,177 @@ int Initialize()
     SetIndexBuffer(2, DevelopingVAL);
     PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
     SetIndexArrow(2, 167);
-
     ValueAreaPercentage_double = ValueAreaPercentage * 0.01;
+
+    // Create or remove the toggle button.
+    if (ShowToggleButton)
+    {
+        CreateToggleButton();
+    }
+    else
+    {
+        ObjectDelete(ChartID(), ToggleButtonName);
+    }
+
+    // If the indicator was hidden (restored from settings), suppress buffer plots.
+    if (IndicatorHidden)
+    {
+        SetIndexStyle(0, DRAW_NONE);
+        SetIndexStyle(1, DRAW_NONE);
+        SetIndexStyle(2, DRAW_NONE);
+    }
 
     // Initialization successful
     return INIT_SUCCEEDED;
+}
+
+//+------------------------------------------------------------------+
+//| Creates the toggle button on the chart.                          |
+//+------------------------------------------------------------------+
+void CreateToggleButton()
+{
+    int button_width = 32;
+    int button_height = 18;
+    int button_spacing = 1;
+    int x_margin = (ToggleButtonCorner == CORNER_LEFT_UPPER || ToggleButtonCorner == CORNER_LEFT_LOWER) ? 5 : 5 + button_width;
+    int base_y = (ToggleButtonCorner == CORNER_LEFT_UPPER || ToggleButtonCorner == CORNER_RIGHT_UPPER) ? 25 : 5 + button_height;
+    
+    int y_pos = base_y;
+    // Check if another MP on/off button already exists at that position.
+    int obj_total = ObjectsTotal(ChartID(), -1, OBJ_BUTTON);
+    for (int i = 0; i < obj_total; i++)
+    {
+        string name = ObjectName(ChartID(), i, -1, OBJ_BUTTON);
+        if (name == ToggleButtonName) continue; // Skip own button.
+        int len = StringLen(name);
+        if (len < 9) continue; // "_MPToggle" is 9 characters.
+        if (StringSubstr(name, len - 9) != "_MPToggle") continue; // Not a Market Profile toggle button.
+        if ((ENUM_BASE_CORNER)ObjectGetInteger(ChartID(), name, OBJPROP_CORNER) != ToggleButtonCorner) continue; // Not the same chart corner.
+        if (ObjectGetInteger(ChartID(), name, OBJPROP_YDISTANCE) == y_pos) // Position already taken.
+        {
+            y_pos += button_height + button_spacing; // Try next one.
+        }
+        else
+        {
+            break; // Position is available, use the current y_pos.
+        }
+    }
+
+    if (ObjectFind(ChartID(), ToggleButtonName) < 0)
+    {
+        ObjectCreate(ChartID(), ToggleButtonName, OBJ_BUTTON, 0, 0, 0);
+    }
+    ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_CORNER, ToggleButtonCorner);
+    ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_XDISTANCE, x_margin);
+    ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_YDISTANCE, y_pos);
+    ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_XSIZE, button_width);
+    ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_YSIZE, button_height);
+    ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_FONTSIZE, 7);
+    ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_SELECTABLE, false);
+    ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_HIDDEN, true);
+    UpdateToggleButton();
+}
+
+//+------------------------------------------------------------------+
+//| Updates the toggle button appearance based on visibility state.  |
+//+------------------------------------------------------------------+
+void UpdateToggleButton()
+{
+    if (ObjectFind(ChartID(), ToggleButtonName) < 0) return;
+    string label = (InstancePrefix != "") ? InstancePrefix : "MP";
+    if (IndicatorHidden)
+    {
+        ObjectSetString(ChartID(), ToggleButtonName, OBJPROP_TEXT, label);
+        ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_BGCOLOR, clrDarkGray);
+        ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_COLOR, clrGray);
+        ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_BORDER_COLOR, clrDimGray);
+    }
+    else
+    {
+        ObjectSetString(ChartID(), ToggleButtonName, OBJPROP_TEXT, label);
+        ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_BGCOLOR, C'48,48,48');
+        ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_COLOR, clrLightGray);
+        ObjectSetInteger(ChartID(), ToggleButtonName, OBJPROP_BORDER_COLOR, clrGray);
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Checks if a chart object belongs to this indicator instance.     |
+//+------------------------------------------------------------------+
+bool IsOwnObject(const string name)
+{
+    // Never toggle the button itself.
+    if (name == ToggleButtonName) return false;
+
+    if (ObjPrefix != "")
+    {
+        // All indicator objects (except alert arrows) start with ObjPrefix.
+        if (StringSubstr(name, 0, StringLen(ObjPrefix)) == ObjPrefix) return true;
+        // Alert arrow objects start with "ArrCC"/"ArrGC"/"ArrPB" followed by ObjPrefix.
+        if (((StringSubstr(name, 0, 5) == "ArrCC") || (StringSubstr(name, 0, 5) == "ArrGC") || (StringSubstr(name, 0, 5) == "ArrPB")) &&
+            (StringSubstr(name, 5, StringLen(ObjPrefix)) == ObjPrefix))
+            return true;
+        return false;
+    }
+
+    // When ObjPrefix is empty, indicator objects have OBJPROP_HIDDEN == true.
+    // This covers histogram dots, medians, VA lines, rays, key values, single prints, and TPO counts.
+    // User-created MPR rectangles have OBJPROP_HIDDEN == false, so they are safely excluded.
+    if (ObjectGetInteger(ChartID(), name, OBJPROP_HIDDEN) == true) return true;
+
+    // Alert arrows do not have OBJPROP_HIDDEN set, so check by their name prefix.
+    if ((StringSubstr(name, 0, 5) == "ArrCC") || (StringSubstr(name, 0, 5) == "ArrGC") || (StringSubstr(name, 0, 5) == "ArrPB")) return true;
+
+    return false;
+}
+
+//+------------------------------------------------------------------+
+//| Hides all chart objects belonging to this indicator instance.     |
+//+------------------------------------------------------------------+
+void HideOwnObjects()
+{
+    int obj_total = ObjectsTotal(ChartID());
+    for (int i = obj_total - 1; i >= 0; i--)
+    {
+        string name = ObjectName(ChartID(), i);
+        if (!IsOwnObject(name)) continue;
+        ObjectSetInteger(ChartID(), name, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Toggles visibility of all indicator objects on the chart.        |
+//+------------------------------------------------------------------+
+void ToggleIndicatorVisibility()
+{
+    IndicatorHidden = !IndicatorHidden;
+    long timeframes = IndicatorHidden ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
+
+    // Toggle all chart objects belonging to this indicator.
+    int obj_total = ObjectsTotal(ChartID());
+    for (int i = obj_total - 1; i >= 0; i--)
+    {
+        string name = ObjectName(ChartID(), i);
+        if (!IsOwnObject(name)) continue;
+        ObjectSetInteger(ChartID(), name, OBJPROP_TIMEFRAMES, timeframes);
+    }
+
+    // Toggle indicator buffer plots.
+    if (IndicatorHidden)
+    {
+        SetIndexStyle(0, DRAW_NONE);
+        SetIndexStyle(1, DRAW_NONE);
+        SetIndexStyle(2, DRAW_NONE);
+    }
+    else
+    {
+        SetIndexStyle(0, DRAW_ARROW);
+        SetIndexStyle(1, DRAW_ARROW);
+        SetIndexStyle(2, DRAW_ARROW);
+    }
+
+    UpdateToggleButton();
+    SaveSettingsOnDisk();
 }
 
 void Deinitialize()
@@ -3659,6 +3933,9 @@ int OnCalculateMain(const int rates_total, const int prev_calculated)
         CleanedUpOn = rates_total; // To prevent cleaning up the buffers again and again when the platform just starts.
     }
 
+    // Skip processing when the indicator is hidden and objects have already been drawn.
+    if ((IndicatorHidden) && ((FirstRunDone) || (HiddenObjectsDrawn))) return rates_total;
+
     CheckAlerts();
 
     // Check if seamless scrolling mode should be on, else if user requests current session, else a specific date.
@@ -3693,8 +3970,25 @@ int OnCalculateMain(const int rates_total, const int prev_calculated)
     if (_Session == Rectangle) // Everything becomes very simple if rectangle sessions are used.
     {
         CheckRectangles();
+        if ((IndicatorHidden) && (!HiddenObjectsDrawn))
+        {
+            HideOwnObjects();
+            HiddenObjectsDrawn = true;
+        }
         Timer = (int)TimeLocal();
         return rates_total;
+    }
+
+    // In MTF mode, verify that higher timeframe data is synchronized before cleaning up and redrawing.
+    // After reconnection from sleep mode, the HTF data may not be loaded yet. Proceeding would
+    // delete existing profiles (ObjectCleanup) and then redraw them incorrectly with incomplete data,
+    // resulting in missing older sessions and wiped Developing POC/VAH/VAL values.
+    if ((TPOSize > 1) && ((rates_total - prev_calculated > 1) || (NeedToRestartDrawing)))
+    {
+        if (iBars(Symbol(), _TPOTimeframe) <= 0)
+        {
+            return prev_calculated; // HTF data not ready yet. Retry on the next tick.
+        }
     }
 
     // Recalculate everything if there were missing bars or something like that. Or if RightToLeft is on and a new right-most session arrived.
@@ -3716,6 +4010,27 @@ int OnCalculateMain(const int rates_total, const int prev_calculated)
     }
 
     int SessionToStart = 0;
+    // Clean up old profiles if their number exceeds the given SessionsToCount.
+    if ((EnableOldProfilesCleanup) && (FirstRunDone))
+    {
+        int max_sessions = _SessionsToCount;
+        if (_Session == Intraday) max_sessions *= IntradaySessionCount;
+        if (SessionsNumber > max_sessions)
+        {
+            ObjectCleanup();
+            FirstRunDone = false;
+            SessionsNumber = 0;
+            ArrayResize(RememberSessionMax, 0);
+            ArrayResize(RememberSessionMin, 0);
+            ArrayResize(RememberSessionStart, 0);
+            ArrayResize(RememberSessionSuffix, 0);
+            ArrayResize(RememberSessionEnd, 0);
+            if (EnableDevelopingPOC)
+            {
+                ArrayInitialize(DevelopingPOC, EMPTY_VALUE);
+            }
+        }
+    }
     // If all sessions have already been counted, jump to the current one.
     if (FirstRunDone) SessionToStart = _SessionsToCount - 1;
     else
@@ -3780,9 +4095,16 @@ int OnCalculateMain(const int rates_total, const int prev_calculated)
         }
     }
 
-    if ((ShowValueAreaRays != None) || (ShowMedianRays != None) || ((HideRaysFromInvisibleSessions) && (SinglePrintRays))) CheckRays();
+    if ((ShowValueAreaRays != None) || (ShowMedianRays != None) || ((HideRaysFromInvisibleSessions || SPRaysUntilIntersection != Stop_No_Rays) && (SinglePrintRays))) CheckRays();
 
     FirstRunDone = true;
+
+    // If drawn while hidden, hide all newly created objects so they are ready for instant reveal on toggle.
+    if ((IndicatorHidden) && (!HiddenObjectsDrawn))
+    {
+        HideOwnObjects();
+        HiddenObjectsDrawn = true;
+    }
 
     Timer = (int)TimeLocal();
     

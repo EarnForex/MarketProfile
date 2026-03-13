@@ -12,6 +12,7 @@ public interface IAlertManagerResources
     Chart Chart { get; }
     DateTime Time { get; }
     Symbol Symbol { get; }
+    string ObjPrefix { get; }
     //--
     bool InputAlertNative { get; }
     SoundType InputAlertSoundType { get; }
@@ -194,7 +195,7 @@ public class AlertManager : IAlertManagerResources
     // Creates an arrow object and sets its properties.
     public void CreateArrowObject(string name, DateTime time, double price, Color colour, ChartIconType type)
     {
-        var objName = $"name{_arrowsCounter}";
+        var objName = $"{ObjPrefix}name{_arrowsCounter}";
         _arrowsCounter++;
         Chart.DrawIcon(objName, type, time, price, colour);
     }
@@ -212,6 +213,7 @@ public class AlertManager : IAlertManagerResources
     public Chart Chart => _resources.Chart;
     public DateTime Time => _resources.Time;
     public Symbol Symbol => _resources.Symbol;
+    public string ObjPrefix => _resources.ObjPrefix;
     //--
     public bool InputAlertNative => _resources.InputAlertNative;
     public SoundType InputAlertSoundType => _resources.InputAlertSoundType;

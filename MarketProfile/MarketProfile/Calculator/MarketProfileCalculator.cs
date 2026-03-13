@@ -32,12 +32,13 @@ public interface IMarketProfileResources
 public class MarketProfileCalculator : IMarketProfileResources
 {
     private readonly IMarketProfileResources _resources;
-    private readonly TimeSpan _barTimeSpan;
+
+    public TimeSpan BarTimeSpan { get; set; }
 
     public MarketProfileCalculator(IMarketProfileResources resources)
     {
         _resources = resources;
-        _barTimeSpan = Helpers.GetBarTimeSpan(TimeFrame);
+        BarTimeSpan = Helpers.GetBarTimeSpan(TimeFrame);
     }
 
     /// <summary>
@@ -109,7 +110,7 @@ public class MarketProfileCalculator : IMarketProfileResources
                 {
                     Direction = bar.Close > bar.Open ? Direction.Up : Direction.Down,
                     StartTime = bar.OpenTime,
-                    EndTime = column + 1 < columns ? bars[column + 1].OpenTime: bar.OpenTime.Add(_barTimeSpan),
+                    EndTime = column + 1 < columns ? bars[column + 1].OpenTime: bar.OpenTime.Add(BarTimeSpan),
                     Top = sliceBottom + histogramSize,
                     Bottom = sliceBottom,
                     Color = colors[column]
@@ -131,7 +132,7 @@ public class MarketProfileCalculator : IMarketProfileResources
                 {
                     Direction = pointToPile.Direction,
                     StartTime = newColumnBar.OpenTime,
-                    EndTime = newColumnIndex + 1 < columns ? bars[newColumnIndex + 1].OpenTime : newColumnBar.OpenTime.Add(_barTimeSpan),
+                    EndTime = newColumnIndex + 1 < columns ? bars[newColumnIndex + 1].OpenTime : newColumnBar.OpenTime.Add(BarTimeSpan),
                     Top = pointToPile.Top,
                     Bottom = pointToPile.Bottom,
                     Color = pointToPile.Color
@@ -207,7 +208,7 @@ public class MarketProfileCalculator : IMarketProfileResources
                 {
                     Direction = bar.Close > bar.Open ? Direction.Up : Direction.Down,
                     StartTime = bar.OpenTime,
-                    EndTime = column + 1 < columns ? bars[column + 1].OpenTime : bar.OpenTime.Add(_barTimeSpan),
+                    EndTime = column + 1 < columns ? bars[column + 1].OpenTime : bar.OpenTime.Add(BarTimeSpan),
                     Top = sliceBottom + histogramSize,
                     Bottom = sliceBottom,
                     Color = colors[column]
@@ -228,7 +229,7 @@ public class MarketProfileCalculator : IMarketProfileResources
                 {
                     Direction = pointToPile.Direction,
                     StartTime = newColumnBar.OpenTime,
-                    EndTime = newColumnIndex + 1 < columns ? bars[newColumnIndex + 1].OpenTime : newColumnBar.OpenTime.Add(_barTimeSpan),
+                    EndTime = newColumnIndex + 1 < columns ? bars[newColumnIndex + 1].OpenTime : newColumnBar.OpenTime.Add(BarTimeSpan),
                     Top = pointToPile.Top,
                     Bottom = pointToPile.Bottom,
                     Color = pointToPile.Color
@@ -303,7 +304,7 @@ public class MarketProfileCalculator : IMarketProfileResources
                 {
                     Direction = bar.Close > bar.Open ? Direction.Up : Direction.Down,
                     StartTime = bar.OpenTime,
-                    EndTime = column + 1 < columns ? bars[column + 1].OpenTime: bar.OpenTime.Add(_barTimeSpan),
+                    EndTime = column + 1 < columns ? bars[column + 1].OpenTime: bar.OpenTime.Add(BarTimeSpan),
                     Top = sliceBottom + histogramSize,
                     Bottom = sliceBottom,
                     Color = colors[column]
@@ -357,7 +358,7 @@ public class MarketProfileCalculator : IMarketProfileResources
                 {
                     Direction = rowValue.Direction,
                     StartTime = bar.OpenTime,
-                    EndTime = newColumnIndex + 1 < columnValues.Count ? bars[newColumnIndex + 1].OpenTime : bar.OpenTime.Add(_barTimeSpan),
+                    EndTime = newColumnIndex + 1 < columnValues.Count ? bars[newColumnIndex + 1].OpenTime : bar.OpenTime.Add(BarTimeSpan),
                     Top = rowValue.Top,
                     Bottom = rowValue.Bottom,
                     Color = rowValue.Color
@@ -406,7 +407,7 @@ public class MarketProfileCalculator : IMarketProfileResources
                 {
                     Direction = rowValue.Direction,
                     StartTime = bar.OpenTime,
-                    EndTime = newColumnIndex + 1 < columnValues.Count ? bars[newColumnIndex + 1].OpenTime : bar.OpenTime.Add(_barTimeSpan),
+                    EndTime = newColumnIndex + 1 < columnValues.Count ? bars[newColumnIndex + 1].OpenTime : bar.OpenTime.Add(BarTimeSpan),
                     Top = rowValue.Top,
                     Bottom = rowValue.Bottom,
                     Color = rowValue.Color

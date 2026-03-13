@@ -9,6 +9,10 @@ public interface ISessionChangeManagerResources
     SessionState SessionState { get; set; }
     SessionPeriod InputSession { get; }
     bool InputSeamlessScrollingMode { get; }
+    string ObjPrefix { get; }
+    string StoragePrefix { get; }
+    int TpoSize { get; }
+    TimeFrame ResolvedTPOTimeframe { get; }
     Chart Chart { get; }
     TimeFrame TimeFrame { get; }
     void Print(object message);
@@ -27,13 +31,13 @@ public class SessionChangeManager : ISessionChangeManagerResources
     {
         SessionState.LastSessionState = sessionPeriod;
         SessionState.LastTransition = Transitions.ChangedByHotkey;
-        LocalStorage.SetObject("SessionState", SessionState);
+        LocalStorage.SetObject(StoragePrefix + "SessionState", SessionState);
         LocalStorage.Flush(LocalStorageScope.Instance);
     }
 
     public void LoadSessionState()
     {
-        var sessionState = LocalStorage.GetObject<SessionState>("SessionState", LocalStorageScope.Instance);
+        var sessionState = LocalStorage.GetObject<SessionState>(StoragePrefix + "SessionState", LocalStorageScope.Instance);
 
         //- There's no storage for this instance
         //  - The indicator is initialized with the values from the parameter
@@ -121,8 +125,16 @@ public class SessionChangeManager : ISessionChangeManagerResources
 
     private bool CheckSession(SessionPeriod sessionPeriod)
     {
-        if (TimeFrame <= TimeFrame.Minute30) 
+        var effectiveTf = TpoSize > 1 ? ResolvedTPOTimeframe : TimeFrame;
+        
+        if (effectiveTf <= TimeFrame.Minute30) 
             return true;
+        
+        if (TpoSize > 1)
+        {
+            MessageBox.Show($"TPO Timeframe should not be higher than M30 for {sessionPeriod} sessions. Please change the TPO Timeframe parameter.", "Alert", MessageBoxButton.OK);
+            return false;
+        }
         
         var result = MessageBox.Show($"Timeframe should not be higher than M30 for an {sessionPeriod} sessions, do you want to change it?", "Alert", MessageBoxButton.YesNo);
     
@@ -135,10 +147,18 @@ public class SessionChangeManager : ISessionChangeManagerResources
         return false;
     }
 
-    public bool CheckSession(SessionPeriod sessionPeriod,TimeFrame lowerTf, TimeFrame upperTf)
+    public bool CheckSession(SessionPeriod sessionPeriod, TimeFrame lowerTf, TimeFrame upperTf)
     {
-        if (TimeFrame >= lowerTf && TimeFrame <= upperTf) 
+        var effectiveTf = TpoSize > 1 ? ResolvedTPOTimeframe : TimeFrame;
+        
+        if (effectiveTf >= lowerTf && effectiveTf <= upperTf) 
             return true;
+        
+        if (TpoSize > 1)
+        {
+            MessageBox.Show($"TPO Timeframe should be between {lowerTf} and {upperTf} for a {sessionPeriod} session. Please change the TPO Timeframe parameter.", "Alert", MessageBoxButton.OK);
+            return false;
+        }
         
         var result = MessageBox.Show($"Timeframe should be between {lowerTf} and {upperTf} for a {sessionPeriod} session, do you want to change it?", "Alert", MessageBoxButton.YesNo);
 
@@ -158,6 +178,10 @@ public class SessionChangeManager : ISessionChangeManagerResources
         set => _resources.SessionState = value;
     }
 
+    public string ObjPrefix => _resources.ObjPrefix;
+    public string StoragePrefix => _resources.StoragePrefix;
+    public int TpoSize => _resources.TpoSize;
+    public TimeFrame ResolvedTPOTimeframe => _resources.ResolvedTPOTimeframe;
     public TimeFrame TimeFrame => _resources.TimeFrame;
 
     public void Print(object message) => _resources.Print(message);

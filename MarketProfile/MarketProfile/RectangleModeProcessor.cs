@@ -14,6 +14,7 @@ public interface IRectangleModeProcessorResources
     MarketProfileCalculator Calculator { get; }
     List<MarketProfileSession> Sessions { get; }
     SessionState SessionState { get; }
+    string ObjPrefix { get; }
     //--
     Color InputStartColor { get; }
     Color InputEndColor { get; }
@@ -129,7 +130,7 @@ public class RectangleModeProcessor : IRectangleModeProcessorResources, IIndicat
         var rectangleLow = maxPrice - rectangleRange;
         var rectangleHigh = minPrice + rectangleRange;
         
-        var rectangle = Chart.DrawRectangle($"MarketProfileRectangle-{Guid.NewGuid()}", startOfRectangleTime, rectangleLow, endOfRectangleTime, rectangleHigh, Color.Blue);
+        var rectangle = Chart.DrawRectangle($"{ObjPrefix}MarketProfileRectangle-{Guid.NewGuid()}", startOfRectangleTime, rectangleLow, endOfRectangleTime, rectangleHigh, Color.Blue);
         rectangle.IsInteractive = true;
         
         var strategy = SessionProfileStrategyFactory.CreateRectangle(this, startOfRectangleTime, endOfRectangleTime);
@@ -250,6 +251,7 @@ public class RectangleModeProcessor : IRectangleModeProcessorResources, IIndicat
     public MarketProfileCalculator Calculator => _resources.Calculator;
     public List<MarketProfileSession> Sessions => _resources.Sessions;
     public SessionState SessionState => _resources.SessionState;
+    public string ObjPrefix => _resources.ObjPrefix;
     public Color InputStartColor => _resources.InputStartColor;
     public Color InputEndColor => _resources.InputEndColor;
     public void Print(object obj) => _resources.Print(obj);

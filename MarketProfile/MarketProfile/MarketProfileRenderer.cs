@@ -38,6 +38,7 @@ public interface IMarketProfileRendererSettings
     bool InputSinglePrintRays { get; }
     LineStyle InputSinglePrintRayStyle { get; }
     int InputSinglePrintRayWidth { get; }
+    WaysToStopRays InputSPRaysUntilIntersection { get; }
     Color InputProminentMedianColor { get; }
     bool InputDrawOnlyHistogramBorder { get; }
     LineStyle InputProminentMedianStyle { get; } 
@@ -47,6 +48,7 @@ public interface IMarketProfileRendererSettings
     Color InputTpoCountBelowColor { get; }
     // bool InputRightToLeft { get; }
     MarketProfileCalculator Calculator { get; }
+    string ObjPrefix { get; }
     Bars Bars { get; }
     IndicatorDataSeries OutputDevelopingPoC { get; }
     IndicatorDataSeries OutputDevelopingVah { get; }
@@ -107,7 +109,7 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
                 color = point.Color;
 
             var r = Chart.DrawRectangle(
-                $"{matrixStartTime}-row{row}column{column}", 
+                $"{ObjPrefix}{matrixStartTime}-row{row}column{column}", 
                 point.StartTime.AddMinutes(-InputTimeShiftMinutes), 
                 point.Bottom, 
                 point.EndTime.AddMinutes(-InputTimeShiftMinutes), 
@@ -191,7 +193,7 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
                     color = point.Color;
 
                 var r = Chart.DrawRectangle(
-                    $"{matrixStartTime}-{row}{column}",
+                    $"{ObjPrefix}{matrixStartTime}-{row}{column}",
                     flippedStartTime.AddMinutes(-InputTimeShiftMinutes),
                     point.Bottom,
                     flippedEndTime.AddMinutes(-InputTimeShiftMinutes),
@@ -231,11 +233,11 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
 
         var result = new List<ChartObject>
         {
-            Chart.DrawTrendLine($"VAH-{matrixStartTime}", model.StartTime, val, pointOfControlRowEndTime, val, InputValueAreaHighLowColor, InputValueAreaHighLowWidth, InputValueAreaHighLowStyle),
-            Chart.DrawTrendLine($"VAL-{matrixStartTime}", model.StartTime, vah, pointOfControlRowEndTime, vah, InputValueAreaHighLowColor, InputValueAreaHighLowWidth, InputValueAreaHighLowStyle),
-            Chart.DrawTrendLine($"Left-Boundary-{matrixStartTime}", model.StartTime, val, model.StartTime, vah, InputValueAreaSidesColor, InputValueAreaSidesWidth, InputValueAreaSidesStyle),
-            Chart.DrawTrendLine($"Right-Boundary-{matrixStartTime}", pointOfControlRowEndTime, val, pointOfControlRowEndTime, vah, InputValueAreaSidesColor, InputValueAreaSidesWidth, InputValueAreaSidesStyle),
-            Chart.DrawTrendLine($"PointOfControl-{matrixStartTime}", model.StartTime, pointOfControl, pointOfControlRowEndTime, pointOfControl, InputMedianColor, InputMedianWidth, InputMedianStyle),
+            Chart.DrawTrendLine($"{ObjPrefix}VAH-{matrixStartTime}", model.StartTime, val, pointOfControlRowEndTime, val, InputValueAreaHighLowColor, InputValueAreaHighLowWidth, InputValueAreaHighLowStyle),
+            Chart.DrawTrendLine($"{ObjPrefix}VAL-{matrixStartTime}", model.StartTime, vah, pointOfControlRowEndTime, vah, InputValueAreaHighLowColor, InputValueAreaHighLowWidth, InputValueAreaHighLowStyle),
+            Chart.DrawTrendLine($"{ObjPrefix}Left-Boundary-{matrixStartTime}", model.StartTime, val, model.StartTime, vah, InputValueAreaSidesColor, InputValueAreaSidesWidth, InputValueAreaSidesStyle),
+            Chart.DrawTrendLine($"{ObjPrefix}Right-Boundary-{matrixStartTime}", pointOfControlRowEndTime, val, pointOfControlRowEndTime, vah, InputValueAreaSidesColor, InputValueAreaSidesWidth, InputValueAreaSidesStyle),
+            Chart.DrawTrendLine($"{ObjPrefix}PointOfControl-{matrixStartTime}", model.StartTime, pointOfControl, pointOfControlRowEndTime, pointOfControl, InputMedianColor, InputMedianWidth, InputMedianStyle),
         };
 
         return result;
@@ -292,7 +294,7 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
             case SessionsToDrawRays.PreviousCurrent when index <= 1:
             case SessionsToDrawRays.AllPrevious when index > 0:
             case SessionsToDrawRays.All:
-                var pointOfControlRay = Chart.DrawTrendLine($"PointOfControlRay-Previous-{model.StartTime}", pointOfControlRowEndTime, model.PointOfControl, medianRowEndTime1MinAfter, model.PointOfControl, InputMedianColor, InputMedianRayWidth, InputMedianRayStyle);
+                var pointOfControlRay = Chart.DrawTrendLine($"{ObjPrefix}PointOfControlRay-Previous-{model.StartTime}", pointOfControlRowEndTime, model.PointOfControl, medianRowEndTime1MinAfter, model.PointOfControl, InputMedianColor, InputMedianRayWidth, InputMedianRayStyle);
                 pointOfControlRay.ExtendToInfinity = true;
                 result.Add(pointOfControlRay);
                 break;
@@ -303,16 +305,10 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
 
     public void RenderDevelopingVals(Dictionary<DateTime, double> developingVals)
     {
-        int i = 0;
         foreach (var (col, valRow) in developingVals)
         {
-            if (i == developingVals.Count - 1)
-                break;
-            
             var idx = Bars.OpenTimes.GetIndexByTime(col);
-            
             OutputDevelopingVaL[idx] = valRow;
-            i++;
         }
     }
 
@@ -327,17 +323,10 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
     
     public void RenderDevelopingVahs(Dictionary<DateTime, double> developingVahs)
     {
-        int i = 0;
         foreach (var (col, vahRow) in developingVahs)
         {
-            if (i == developingVahs.Count - 1)
-                break;
-            
             var idx = Bars.OpenTimes.GetIndexByTime(col);
-            
             OutputDevelopingVah[idx] = vahRow;
-            //lastVah = vahRow;
-            i++;
         }
     }
 
@@ -352,16 +341,10 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
     
     public void RenderDevelopingPoc(Dictionary<DateTime, double> developingPoC)
     {
-        int i = 0;
         foreach (var (col, pocRow) in developingPoC)
         {
-            if (i == developingPoC.Count - 1)
-                break;
-            
             var idx = Bars.OpenTimes.GetIndexByTime(col);
-            
             OutputDevelopingPoC[idx] = pocRow;
-            i++;
         }
     }
 
@@ -479,11 +462,11 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
             case SessionsToDrawRays.PreviousCurrent when index <= 1:
             case SessionsToDrawRays.AllPrevious when index > 0:
             case SessionsToDrawRays.All:
-                var varHigh = Chart.DrawTrendLine($"ValueAreaRayHigh-Previous-{matrixStartTime}", pointOfControlRowEndTime, model.ValueAreaHigh, pointOfControlRowEndTime1MinAfter, model.ValueAreaHigh, InputValueAreaHighLowColor, InputValueAreaRayHighLowWidth, InputValueAreaRayHighLowStyle);
+                var varHigh = Chart.DrawTrendLine($"{ObjPrefix}ValueAreaRayHigh-Previous-{matrixStartTime}", pointOfControlRowEndTime, model.ValueAreaHigh, pointOfControlRowEndTime1MinAfter, model.ValueAreaHigh, InputValueAreaHighLowColor, InputValueAreaRayHighLowWidth, InputValueAreaRayHighLowStyle);
                 varHigh.ExtendToInfinity = true;
                 result.Add(varHigh);
                     
-                var varLow = Chart.DrawTrendLine($"ValueAreaRayLow-Previous-{matrixStartTime}", pointOfControlRowEndTime, model.ValueAreaLow, pointOfControlRowEndTime1MinAfter, model.ValueAreaLow, InputValueAreaHighLowColor, InputValueAreaRayHighLowWidth, InputValueAreaRayHighLowStyle);
+                var varLow = Chart.DrawTrendLine($"{ObjPrefix}ValueAreaRayLow-Previous-{matrixStartTime}", pointOfControlRowEndTime, model.ValueAreaLow, pointOfControlRowEndTime1MinAfter, model.ValueAreaLow, InputValueAreaHighLowColor, InputValueAreaRayHighLowWidth, InputValueAreaRayHighLowStyle);
                 varLow.ExtendToInfinity = true;
                 result.Add(varLow);
                 break;
@@ -573,6 +556,77 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
         }
     }
 
+    public void PostProcessSinglePrintRays(List<MarketProfileSession> sessions)
+    {
+        if (InputSPRaysUntilIntersection == WaysToStopRays.StopNoRays)
+            return;
+        
+        if (!InputSinglePrintRays)
+            return;
+        
+        var sortedSessions = sessions.OrderBy(s => s.Model.StartTime).ToList();
+        
+        for (var i = 0; i < sortedSessions.Count; i++)
+        {
+            if (sortedSessions[i].SinglePrints == null)
+                continue;
+            
+            // Filter only the trend line rays (not the rectangle blocks) from SinglePrints.
+            foreach (var obj in sortedSessions[i].SinglePrints)
+            {
+                if (obj is ChartTrendLine trendLine && trendLine.Name.Contains(ObjPrefix + "SinglePrintRay"))
+                    PostProcessSinglePrintRay(trendLine, i, sortedSessions);
+            }
+        }
+    }
+
+    private void PostProcessSinglePrintRay(ChartTrendLine trendLine, int index, List<MarketProfileSession> sessions)
+    {
+        // The ray's price level is its Y1 coordinate.
+        var referencePrice = trendLine.Y1;
+        
+        if (index == sessions.Count - 1)
+            return;
+
+        for (var i = index + 1; i < sessions.Count; i++)
+        {
+            var nextSession = sessions[i];
+            
+            var nextSessionTopPrice = MarketProfileCalculator.GetTopPrice(nextSession.Model.Matrix);
+            var nextSessionBottomPrice = MarketProfileCalculator.GetBottomPrice(nextSession.Model.Matrix);
+
+            if (referencePrice >= nextSessionBottomPrice && referencePrice <= nextSessionTopPrice)
+            {
+                switch (InputSPRaysUntilIntersection)
+                {
+                    case WaysToStopRays.StopNoRays:
+                        trendLine.ExtendToInfinity = true;
+                        return;
+                    case WaysToStopRays.StopAllRays:
+                        trendLine.ExtendToInfinity = false;
+                        trendLine.Time2 = nextSession.Model.StartTime;
+                        return;
+                    case WaysToStopRays.StopAllRaysExceptPrevSession:
+                        if (index != sessions.Count - 2)
+                        {
+                            trendLine.ExtendToInfinity = false;
+                            trendLine.Time2 = nextSession.Model.StartTime;
+                        }
+                        return;
+                    case WaysToStopRays.StopOnlyPreviousSession:
+                        if (index == sessions.Count - 2)
+                        {
+                            trendLine.ExtendToInfinity = false;
+                            trendLine.Time2 = nextSession.Model.StartTime;
+                        }
+                        return;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+        }
+    }
+
     public List<ChartObject> RenderKeyValues(MarketProfileModel model)
     {
         var result = new List<ChartObject>();
@@ -595,18 +649,18 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
             break;
         }
         
-        var vahText = Chart.DrawText($"VAH-Text-{matrixStartTime}", $"{vah.ToString(_format)}", model.StartTime, vah, InputKeyValuesColor);
+        var vahText = Chart.DrawText($"{ObjPrefix}VAH-Text-{matrixStartTime}", $"{vah.ToString(_format)}", model.StartTime, vah, InputKeyValuesColor);
             
         vahText.FontSize = InputKeyValuesSize;
         vahText.HorizontalAlignment = HorizontalAlignment.Left;
         vahText.VerticalAlignment = VerticalAlignment.Center;
             
-        var valText = Chart.DrawText($"VAL-Text-{matrixStartTime}", $"{val.ToString(_format)}", model.StartTime, val, InputKeyValuesColor);
+        var valText = Chart.DrawText($"{ObjPrefix}VAL-Text-{matrixStartTime}", $"{val.ToString(_format)}", model.StartTime, val, InputKeyValuesColor);
         valText.FontSize = InputKeyValuesSize;
         valText.HorizontalAlignment = HorizontalAlignment.Left;
         valText.VerticalAlignment = VerticalAlignment.Center;
             
-        var pointOfControlText = Chart.DrawText($"PointOfControl-Text-{matrixStartTime}", $"{pointOfControl.ToString(_format)}", model.StartTime, pointOfControl, InputKeyValuesColor);
+        var pointOfControlText = Chart.DrawText($"{ObjPrefix}PointOfControl-Text-{matrixStartTime}", $"{pointOfControl.ToString(_format)}", model.StartTime, pointOfControl, InputKeyValuesColor);
         pointOfControlText.FontSize = InputKeyValuesSize;
         pointOfControlText.HorizontalAlignment = HorizontalAlignment.Left;
         pointOfControlText.VerticalAlignment = VerticalAlignment.Center;
@@ -654,12 +708,12 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
         
         var matrixStartTime = model.Matrix.GetLength(0) > 0 ? model.Matrix[0, 0].StartTime.Ticks : DateTime.MinValue.Ticks;
         
-        var tpoCountAbove = Chart.DrawText($"TPO-Above-{matrixStartTime}", $"{model.TpoCountAbove}", pointOfControlRowEndTime, pointOfControl, InputTpoCountAboveColor);
+        var tpoCountAbove = Chart.DrawText($"{ObjPrefix}TPO-Above-{matrixStartTime}", $"{model.TpoCountAbove}", pointOfControlRowEndTime, pointOfControl, InputTpoCountAboveColor);
         tpoCountAbove.FontSize = InputKeyValuesSize;
         tpoCountAbove.HorizontalAlignment = HorizontalAlignment.Right;
         tpoCountAbove.VerticalAlignment = VerticalAlignment.Top;
         
-        var tpoCountBelow = Chart.DrawText($"TPO-Below-{matrixStartTime}", $"{model.TpoCountBelow}", pointOfControlRowEndTime, pointOfControl, InputTpoCountBelowColor);
+        var tpoCountBelow = Chart.DrawText($"{ObjPrefix}TPO-Below-{matrixStartTime}", $"{model.TpoCountBelow}", pointOfControlRowEndTime, pointOfControl, InputTpoCountBelowColor);
         tpoCountBelow.FontSize = InputKeyValuesSize;
         tpoCountBelow.HorizontalAlignment = HorizontalAlignment.Right;
         tpoCountBelow.VerticalAlignment = VerticalAlignment.Bottom;
@@ -715,12 +769,12 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
             break;
         }
         
-        var tpoCountAbove = Chart.DrawText($"TPO-Above-Flipped-{matrixStartTime}", $"{model.TpoCountAbove}", flippedEnd, pointOfControl, InputTpoCountAboveColor);
+        var tpoCountAbove = Chart.DrawText($"{ObjPrefix}TPO-Above-Flipped-{matrixStartTime}", $"{model.TpoCountAbove}", flippedEnd, pointOfControl, InputTpoCountAboveColor);
         tpoCountAbove.FontSize = InputKeyValuesSize;
         tpoCountAbove.HorizontalAlignment = HorizontalAlignment.Right;
         tpoCountAbove.VerticalAlignment = VerticalAlignment.Top;
         
-        var tpoCountBelow = Chart.DrawText($"TPO-Below-Flipped-{matrixStartTime}", $"{model.TpoCountBelow}", flippedEnd, pointOfControl, InputTpoCountBelowColor);
+        var tpoCountBelow = Chart.DrawText($"{ObjPrefix}TPO-Below-Flipped-{matrixStartTime}", $"{model.TpoCountBelow}", flippedEnd, pointOfControl, InputTpoCountBelowColor);
         tpoCountBelow.FontSize = InputKeyValuesSize;
         tpoCountBelow.HorizontalAlignment = HorizontalAlignment.Right;
         tpoCountBelow.VerticalAlignment = VerticalAlignment.Bottom;
@@ -762,7 +816,7 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
                 var tpoHigh = tpoBlock.Top;
                 var tpoLow = tpoBlock.Bottom;
 
-                result.Add(Chart.DrawRectangle($"SinglePrintBlock-{i}-{model.StartTime}-{index}", tpoStartTime, tpoHigh, tpoEndTime, tpoLow, InputSinglePrintColor));
+                result.Add(Chart.DrawRectangle($"{ObjPrefix}SinglePrintBlock-{i}-{model.StartTime}-{index}", tpoStartTime, tpoHigh, tpoEndTime, tpoLow, InputSinglePrintColor));
             }
 
             //now draw the rays backwards in time, starting from startTime
@@ -771,8 +825,8 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
             var bottom = singlePrint.Low;
             //
 
-            result.Add(Chart.DrawTrendLine($"SinglePrintRay-top-{model.StartTime}-{index}", s, top, s.AddYears(-10), bottom, InputSinglePrintColor, InputSinglePrintRayWidth, InputSinglePrintRayStyle));
-            result.Add(Chart.DrawTrendLine($"SinglePrintRay-bottom-{model.StartTime}-{index}", s, bottom, s.AddYears(-10), top, InputSinglePrintColor, InputSinglePrintRayWidth, InputSinglePrintRayStyle));
+            result.Add(Chart.DrawTrendLine($"{ObjPrefix}SinglePrintRay-top-{model.StartTime}-{index}", s, top, s.AddYears(-10), bottom, InputSinglePrintColor, InputSinglePrintRayWidth, InputSinglePrintRayStyle));
+            result.Add(Chart.DrawTrendLine($"{ObjPrefix}SinglePrintRay-bottom-{model.StartTime}-{index}", s, bottom, s.AddYears(-10), top, InputSinglePrintColor, InputSinglePrintRayWidth, InputSinglePrintRayStyle));
         }
 
         return result;
@@ -790,7 +844,7 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
             var high = singlePrint.High;
             var low = singlePrint.Low;
 
-            var singlePrintRay = Chart.DrawRectangle($"SinglePrintBlock-{model.StartTime}-{index}", rectangleStartTime, high, model.StartTime, low, InputSinglePrintColor);
+            var singlePrintRay = Chart.DrawRectangle($"{ObjPrefix}SinglePrintBlock-{model.StartTime}-{index}", rectangleStartTime, high, model.StartTime, low, InputSinglePrintColor);
             singlePrintRay.Thickness = 0;
             singlePrintRay.IsFilled = true;
 
@@ -798,13 +852,13 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
 
             if (InputSinglePrintRays)
             {
-                var topLine = Chart.DrawTrendLine($"SinglePrintRay-top-{model.StartTime}-{index}", model.StartTime, high, model.StartTime.AddSeconds(1), high, InputSinglePrintColor, InputSinglePrintRayWidth,
+                var topLine = Chart.DrawTrendLine($"{ObjPrefix}SinglePrintRay-top-{model.StartTime}-{index}", model.StartTime, high, model.StartTime.AddSeconds(1), high, InputSinglePrintColor, InputSinglePrintRayWidth,
                     InputSinglePrintRayStyle);
                 topLine.ExtendToInfinity = true;
 
                 result.Add(topLine);
 
-                var bottomLine = Chart.DrawTrendLine($"SinglePrintRay-bottom-{model.StartTime}-{index}", model.StartTime, low, model.StartTime.AddSeconds(1), low, InputSinglePrintColor,
+                var bottomLine = Chart.DrawTrendLine($"{ObjPrefix}SinglePrintRay-bottom-{model.StartTime}-{index}", model.StartTime, low, model.StartTime.AddSeconds(1), low, InputSinglePrintColor,
                     InputSinglePrintRayWidth, InputSinglePrintRayStyle);
                 bottomLine.ExtendToInfinity = true;
 
@@ -826,7 +880,7 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
         
         var matrixStartTime = profileModel.Matrix.GetLength(0) > 0 ? profileModel.Matrix[0, 0].StartTime.Ticks : DateTime.MinValue.Ticks;
         
-        return Chart.DrawTrendLine($"ProminentLine-{matrixStartTime}", startTime, pointOfControl, endTime, pointOfControl, InputProminentMedianColor, InputProminentMedianWidth, InputProminentMedianStyle);
+        return Chart.DrawTrendLine($"{ObjPrefix}ProminentLine-{matrixStartTime}", startTime, pointOfControl, endTime, pointOfControl, InputProminentMedianColor, InputProminentMedianWidth, InputProminentMedianStyle);
     }
 
     public ChartObject RenderHorizontallyFlippedProminentLine(MarketProfileModel model, MarketProfileSession session)
@@ -961,6 +1015,7 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
     public bool InputSinglePrintRays => _settings.InputSinglePrintRays;
     public LineStyle InputSinglePrintRayStyle => _settings.InputSinglePrintRayStyle;
     public int InputSinglePrintRayWidth => _settings.InputSinglePrintRayWidth;
+    public WaysToStopRays InputSPRaysUntilIntersection => _settings.InputSPRaysUntilIntersection;
     public Color InputProminentMedianColor => _settings.InputProminentMedianColor;
     public bool InputDrawOnlyHistogramBorder => _settings.InputDrawOnlyHistogramBorder;
     public LineStyle InputProminentMedianStyle => _settings.InputProminentMedianStyle;
@@ -969,6 +1024,7 @@ public class MarketProfileRenderer : IMarketProfileResources, IMarketProfileRend
     public Color InputTpoCountAboveColor => _settings.InputTpoCountAboveColor;
     public Color InputTpoCountBelowColor => _settings.InputTpoCountBelowColor;
     public MarketProfileCalculator Calculator => _settings.Calculator;
+    public string ObjPrefix => _settings.ObjPrefix;
 
     #endregion
 }

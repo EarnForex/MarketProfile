@@ -11,19 +11,16 @@
 // Intraday - should be attached to M1-M30 timeframes. M5 is recommended.
 // Designed for major currency pairs, but should work also with exotic pairs, CFDs, or commodities.
 //   
-// Version 1.24
-// Copyright 2010-2025, EarnForex.com
+// Version 1.25
+// Copyright 2010-2026, EarnForex.com
 // https://www.earnforex.com/indicators/MarketProfile/
 // -------------------------------------------------------------------------------
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Text;
 using cAlgo.API;
-using cAlgo.API.Collections;
-using cAlgo.API.Indicators;
 using static cAlgo.Helpers;
 
 namespace cAlgo;
@@ -59,10 +56,8 @@ public class MarketProfile : Indicator,
     [Parameter("Sessions To Count: Number of sessions to count Market Profile.", DefaultValue = 2, Group = "Main")]
     public int InputSessionsToCount { get; set; }
     
-    //[Parameter("Output Developing Sessions To Count (0 == all).", DefaultValue = 10, Group = "Main")]
     public int InputOutputDevelopingSessionsToCount => InputSessionsToCount;
     
-    //
     [Parameter("Seamless Scrolling Mode: Show Sessions on Current Screen.", DefaultValue = false, Group = "Main")]
     public bool InputSeamlessScrollingMode { get; set; }
     
@@ -74,6 +69,12 @@ public class MarketProfile : Indicator,
     
     [Parameter("ValueAreaPercentage: Percentage of TPO's inside Value Area.", DefaultValue = 70, Group = "Main")]
     public int InputValueAreaPercentage { get; set; }
+    
+    [Parameter("InstancePrefix: prefix for objects to allow multiple instances.", DefaultValue = "", Group = "Main")]
+    public string InputInstancePrefix { get; set; }
+    
+    [Parameter("TPO Timeframe: timeframe for TPO data. Equal or higher than chart's. Set to chart TF or lower for normal mode.", DefaultValue = "Minute")]
+    public TimeFrame InputTPOTimeframe { get; set; }
     
     #endregion
     
@@ -166,6 +167,9 @@ public class MarketProfile : Indicator,
     [Parameter("Single Print Ray Width", DefaultValue = 1, Group = "Colors and Looks")]
     public int InputSinglePrintRayWidth { get; set; }
     
+    [Parameter("SP Rays Until Intersection: which Single Print rays stop when hit another MP.", DefaultValue = WaysToStopRays.StopNoRays, Group = "Colors and Looks")]
+    public WaysToStopRays InputSPRaysUntilIntersection { get; set; }
+    
     [Parameter("Prominent Median Color", DefaultValue = "Yellow", Group = "Colors and Looks")]
     public Color InputProminentMedianColor { get; set; }
     
@@ -199,6 +203,9 @@ public class MarketProfile : Indicator,
     
     [Parameter("Disable Histogram: do not draw profile, VAH, VAL, and POC still visible.", DefaultValue = false, Group = "Performance")]
     public bool InputDisableHistogram { get; set; }
+    
+    [Parameter("Enable Old Profiles Cleanup: delete old profiles exceeding SessionsToCount.", DefaultValue = false, Group = "Performance")]
+    public bool InputEnableOldProfilesCleanup { get; set; }
     
     #endregion
     
@@ -398,7 +405,14 @@ public class MarketProfile : Indicator,
 
     private double _numberOfSlices;
     private int _digitsM;
-    
+    private int _tpoSize = 1;
+    private TimeFrame _tpoTimeFrame;
+    private Bars _htfBars;
+
+    public string ObjPrefix { get; private set; }
+    public string StoragePrefix { get; private set; }
+    public int TpoSize => _tpoSize;
+    public TimeFrame ResolvedTPOTimeframe => _tpoTimeFrame;
     public double OneTickSize { get; private set; }
     public double ValueAreaPercentage { get; private set; }
     public List<IntradaySessionDefinition> IntradaySessions { get; private set; }
@@ -422,8 +436,21 @@ public class MarketProfile : Indicator,
     { 
         //System.Diagnostics.Debugger.Launch();
         
+        ObjPrefix = InputInstancePrefix + "_";
+        StoragePrefix = string.IsNullOrEmpty(InputInstancePrefix) ? "" : InputInstancePrefix + " ";
         InitializeOneTickSize();
         ValueAreaPercentage = InputValueAreaPercentage / 100.0;
+        
+        // Resolve TPO timeframe: use chart's if selected is lower.
+        var chartSpan = Helpers.GetBarTimeSpan(TimeFrame);
+        var tpoSpan = Helpers.GetBarTimeSpan(InputTPOTimeframe);
+        _tpoSize = (int)(tpoSpan.TotalSeconds / chartSpan.TotalSeconds);
+        if (_tpoSize < 1) _tpoSize = 1;
+        _tpoTimeFrame = _tpoSize > 1 ? InputTPOTimeframe : TimeFrame;
+        
+        // Load HTF bars if needed.
+        if (_tpoSize > 1)
+            _htfBars = MarketData.GetBars(_tpoTimeFrame);
         
         SessionChangeManager = new SessionChangeManager(this);
         SessionChangeManager.LoadSessionState();
@@ -431,7 +458,7 @@ public class MarketProfile : Indicator,
         
         if (!_canDraw)
         {
-            Chart.DrawStaticText("MarketProfile-NoSessions", "Please choose a suitable timeframe", VerticalAlignment.Center, HorizontalAlignment.Center, Color.Red);
+            Chart.DrawStaticText(ObjPrefix + "MarketProfile-NoSessions", "Please choose a suitable timeframe", VerticalAlignment.Center, HorizontalAlignment.Center, Color.Red);
             return;
         }
 
@@ -447,9 +474,14 @@ public class MarketProfile : Indicator,
         
         CheckZeroIntradaySessions();
         
-        Chart.RemoveAllObjects();
+        RemoveAllOwnObjects();
         
         Calculator = new MarketProfileCalculator(this);
+        
+        // Override the calculator's bar timespan for MTF mode.
+        if (_tpoSize > 1)
+            Calculator.BarTimeSpan = Helpers.GetBarTimeSpan(_tpoTimeFrame);
+        
         Renderer = new MarketProfileRenderer(this, this);
         
         SetSessionsAndAddMarketProfiles(InputSessionsToCount);
@@ -492,7 +524,7 @@ public class MarketProfile : Indicator,
             sb.AppendLine($"StackTrace: {exception.StackTrace}");
 
             Chart.DrawStaticText(
-                $"MarketProfile-Exception", 
+                $"{ObjPrefix}MarketProfile-Exception", 
                 sb.ToString(), 
                 VerticalAlignment.Top, 
                 HorizontalAlignment.Right, 
@@ -529,10 +561,94 @@ public class MarketProfile : Indicator,
         var needNewSession = IsNewSessionRequired(lastSession, Bars.LastBar.OpenTime);
     
         if (needNewSession)
+        {
             SetSessionsAndAddMarketProfiles(1);
+            
+            // Clean up old profiles if their number exceeds the given SessionsToCount.
+            if (InputEnableOldProfilesCleanup && Sessions.Count > InputSessionsToCount)
+            {
+                var excess = Sessions.Count - InputSessionsToCount;
+                for (var i = 0; i < excess; i++)
+                {
+                    Renderer.DeleteAllFromSession(Sessions[0]);
+                    Sessions.RemoveAt(0);
+                }
+            }
+        }
         else
             UpdateLastSession(session: lastSession);
     }
+
+    private void RemoveAllOwnObjects()
+    {
+        if (string.IsNullOrEmpty(ObjPrefix))
+        {
+            Chart.RemoveAllObjects();
+            return;
+        }
+        
+        var toRemove = new List<string>();
+        foreach (var obj in Chart.Objects)
+        {
+            if (obj.Name.StartsWith(ObjPrefix))
+                toRemove.Add(obj.Name);
+        }
+        foreach (var name in toRemove)
+            Chart.RemoveObject(name);
+    }
+
+    #region MTF Helpers
+
+    /// <summary>
+    /// Gets higher-timeframe bars covering the given session time range.
+    /// Uses GetIndexByTime to find the HTF bar that contains the session start time,
+    /// mirroring the MT5 iBarShift approach.
+    /// </summary>
+    private Bar[] GetHTFBarsForRange(DateTime start, DateTime end)
+    {
+        if (_htfBars == null || _tpoSize <= 1) return null;
+        
+        var htfStartIdx = _htfBars.OpenTimes.GetIndexByTime(start);
+        var htfEndIdx = _htfBars.OpenTimes.GetIndexByTime(end);
+        
+        if (htfStartIdx < 0) htfStartIdx = 0;
+        if (htfEndIdx < 0) return null;
+        if (htfStartIdx > htfEndIdx) return null;
+        
+        var result = new List<Bar>();
+        for (var i = htfStartIdx; i <= htfEndIdx; i++)
+            result.Add(_htfBars[i]);
+        
+        return result.Count > 0 ? result.ToArray() : null;
+    }
+
+    /// <summary>
+    /// In MTF mode, the developing POC/VAH/VAL output buffers only have values at HTF bar boundaries.
+    /// This fills the gaps between them so intermediate chart bars display the same value.
+    /// </summary>
+    private void ForwardFillDevelopingValues(DateTime sessionStart, DateTime sessionEnd)
+    {
+        var startIdx = Bars.OpenTimes.GetIndexByTime(sessionStart);
+        var endIdx = Math.Min(Bars.OpenTimes.GetIndexByTime(sessionEnd), Bars.Count - 1);
+        
+        // Fill NaN gaps between HTF bar anchor values written by RenderDeveloping*.
+        // ClearOutputsOnRange was called first, so only anchor positions have values — gaps are NaN.
+        for (var i = startIdx + 1; i <= endIdx; i++)
+        {
+            if (InputEnableDevelopingPoC && double.IsNaN(OutputDevelopingPoC[i]) && !double.IsNaN(OutputDevelopingPoC[i - 1]))
+                OutputDevelopingPoC[i] = OutputDevelopingPoC[i - 1];
+            
+            if (InputEnableDevelopingValueAtHighValueAtLow)
+            {
+                if (double.IsNaN(OutputDevelopingVah[i]) && !double.IsNaN(OutputDevelopingVah[i - 1]))
+                    OutputDevelopingVah[i] = OutputDevelopingVah[i - 1];
+                if (double.IsNaN(OutputDevelopingVaL[i]) && !double.IsNaN(OutputDevelopingVaL[i - 1]))
+                    OutputDevelopingVaL[i] = OutputDevelopingVaL[i - 1];
+            }
+        }
+    }
+
+    #endregion
 
     private void UpdateLastSession(MarketProfileSession session)
     {
@@ -570,8 +686,14 @@ public class MarketProfile : Indicator,
             return; // or continue to next session
         }
         
-        var bars = session.Range.Bars.ToArray();
+        // In MTF mode, use higher-timeframe bars for the calculation.
+        var bars = _tpoSize > 1 ? GetHTFBarsForRange(session.Range.Start, session.Range.End) : session.Range.Bars.ToArray();
         
+        if (bars == null || bars.Length == 0)
+        {
+            Print($"Warning: No bars available for session range {session.Range.Start} to {session.Range.End}");
+            return;
+        }
         var highMinusLow = bars.Max(x => x.High) - bars.Min(x => x.Low);
         var slices = (int) (highMinusLow / OneTickSize);
 
@@ -607,7 +729,24 @@ public class MarketProfile : Indicator,
         profileModel.IsProminentLine = Calculator.IsProminentLine(profileModel.Matrix, InputProminentMedianPercentage / 100.0);
 
         session.Model = profileModel;
+
+        // Clear output buffers for this session range, then re-render developing values.
+        // Must happen BEFORE DeleteAllFromSession which empties the developing dictionaries.
+        Renderer.ClearOutputsOnRange(session.Range.Start, session.Range.End);
         
+        if (InputEnableDevelopingPoC)
+            Renderer.RenderDevelopingPoc(profileModel.DevelopingPoC);
+            
+        if (InputEnableDevelopingValueAtHighValueAtLow)
+        {
+            Renderer.RenderDevelopingVahs(profileModel.DevelopingAreaHigh);
+            Renderer.RenderDevelopingVals(profileModel.DevelopingAreaLow);   
+        }
+        
+        // In MTF mode, forward-fill developing values across intermediate chart bars.
+        if (_tpoSize > 1 && (InputEnableDevelopingPoC || InputEnableDevelopingValueAtHighValueAtLow))
+            ForwardFillDevelopingValues(session.Range.Start, session.Range.End);
+
         Renderer.DeleteAllFromSession(session);
 
         if (InputRightToLeft)
@@ -635,7 +774,8 @@ public class MarketProfile : Indicator,
             
             Renderer.PostProcessPointOfControlRays(Sessions);
             Renderer.PostProcessValueAreaRays(Sessions);
-        }
+            Renderer.PostProcessSinglePrintRays(Sessions);
+         }
     }
 
     public bool IsNewSessionRequired(MarketProfileSession lastSession, DateTime newBarTime)
@@ -772,7 +912,7 @@ public class MarketProfile : Indicator,
         
         Renderer.PostProcessPointOfControlRays(Sessions);
         Renderer.PostProcessValueAreaRays(Sessions);
-
+        Renderer.PostProcessSinglePrintRays(Sessions);
         return true;
     }
 
@@ -785,7 +925,15 @@ public class MarketProfile : Indicator,
             return false; // or continue to next session
         }
         
-        var bars = range.Bars.ToArray();
+        // In MTF mode, use higher-timeframe bars for the calculation.
+        var bars = _tpoSize > 1 ? GetHTFBarsForRange(range.Start, range.End) : range.Bars.ToArray();
+        
+        if (bars == null || bars.Length == 0)
+        {
+            Print($"Warning: No bars available for session range {range.Start} to {range.End}");
+            return false;
+        }
+        
         var slices = Calculator.GetSlices(bars);
 
         if (slices == 0)
@@ -854,7 +1002,10 @@ public class MarketProfile : Indicator,
             Renderer.RenderDevelopingVahs(profileModel.DevelopingAreaHigh);
             Renderer.RenderDevelopingVals(profileModel.DevelopingAreaLow);   
         }
-
+        
+        // In MTF mode, forward-fill developing values across intermediate chart bars.
+        if (_tpoSize > 1 && (InputEnableDevelopingPoC || InputEnableDevelopingValueAtHighValueAtLow))
+            ForwardFillDevelopingValues(range.Start, range.End);
         session.SinglePrints = Renderer.RenderSinglePrints(profileModel);
             
         Sessions.Add(session);
